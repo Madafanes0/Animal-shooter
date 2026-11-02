@@ -19,38 +19,19 @@ local camera = workspace.CurrentCamera
 local state: any = nil
 local shooting = false
 
----------------------------------------------------------------- UI base
+---------------------------------------------------------------- UI base (estilo Roll a Chef)
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "KillABeastUI"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.Parent = player:WaitForChild("PlayerGui")
+local Theme = require(script.Parent.UI.Theme)
+local Kit = require(script.Parent.UI.Kit)
+local C = Theme.Colors
 
-local FONT = Enum.Font.LuckiestGuy
+local gui = Theme.screen("KillABeastUI")
 
-local function corner(p: Instance, r: number?)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, r or 10)
-	c.Parent = p
-end
-
-local function stroke(p: Instance, color: Color3?, thick: number?)
-	local s = Instance.new("UIStroke")
-	s.Color = color or Color3.new(0, 0, 0)
-	s.Thickness = thick or 2.5
-	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	s.Parent = p
-end
-
+-- Texto con la fuente y el borde del estilo (lo usan también los efectos del disparo)
 local function text(parent: Instance, props: { [string]: any }): TextLabel
-	local t = Instance.new("TextLabel")
-	t.BackgroundTransparency = 1
-	t.Font = FONT
-	t.TextColor3 = Color3.new(1, 1, 1)
-	t.TextStrokeTransparency = 0
-	t.TextScaled = true
+	local t = Theme.new("TextLabel", { TextScaled = true, TextWrapped = true })
+	Theme.textStroke(t, props.StrokeThickness or 3)
+	props.StrokeThickness = nil
 	for k, v in props do
 		(t :: any)[k] = v
 	end
@@ -58,73 +39,51 @@ local function text(parent: Instance, props: { [string]: any }): TextLabel
 	return t
 end
 
-local function button(parent: Instance, label: string, color: Color3, size: UDim2, pos: UDim2): TextButton
-	local b = Instance.new("TextButton")
-	b.Size = size
-	b.Position = pos
-	b.BackgroundColor3 = color
-	b.Font = FONT
-	b.Text = label
-	b.TextScaled = true
-	b.TextColor3 = Color3.new(1, 1, 1)
-	b.TextStrokeTransparency = 0
-	b.AutoButtonColor = true
-	corner(b, 8)
-	stroke(b)
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0.15, 0)
-	pad.PaddingBottom = UDim.new(0.15, 0)
-	pad.PaddingLeft = UDim.new(0, 6)
-	pad.PaddingRight = UDim.new(0, 6)
-	pad.Parent = b
-	b.Parent = parent
-	return b
+local function action(kind: string, arg: any?)
+	Remotes.Action:FireServer(kind, arg)
 end
 
--- Botones laterales (como Shop / Index de Steal an Egg)
-local side = Instance.new("Frame")
-side.BackgroundTransparency = 1
-side.Size = UDim2.fromOffset(130, 228)
-side.Position = UDim2.new(0, 8, 0.5, -114)
-side.Parent = gui
-local list = Instance.new("UIListLayout")
-list.Padding = UDim.new(0, 8)
-list.Parent = side
-local shopBtn = button(side, "Shop", Color3.fromRGB(60, 200, 50), UDim2.new(1, 0, 0, 48), UDim2.new())
-local stableBtn = button(side, "Stable", Color3.fromRGB(230, 140, 40), UDim2.new(1, 0, 0, 48), UDim2.new())
-local indexBtn = button(side, "Index", Color3.fromRGB(40, 170, 230), UDim2.new(1, 0, 0, 48), UDim2.new())
-local robuxBtn = button(side, "Robux", Color3.fromRGB(255, 190, 30), UDim2.new(1, 0, 0, 48), UDim2.new())
+local currentPanel: string? = nil
+local renderPanel: () -> ()
+local function toggle(name: string)
+	currentPanel = if currentPanel == name then nil else name
+	renderPanel()
+end
+
+-- Casillas del lado izquierdo (2 × 2), como en Roll a Chef
+local side = Theme.new("Frame", { Name = "Side", Size = UDim2.fromOffset(186, 186), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Parent = gui })
+Theme.new("UIGridLayout", { CellSize = UDim2.fromOffset(88, 88), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = side })
+for i, t in { { "Shop", "Lime", "store", "🛒" }, { "Stable", "Orange", "platform", "🐾" }, { "Index", "Blue", "book", "📖" }, { "Robux", "Gold", "robux", "⬢" } } do
+	local tile = Kit.tile(t[1], t[2], t[3], t[4], 88, side, function()
+		toggle(t[1])
+	end)
+	tile.LayoutOrder = i
+end
 
 -- Dinero y poder abajo a la izquierda
-local stats = Instance.new("Frame")
-stats.BackgroundTransparency = 1
-stats.Size = UDim2.fromOffset(260, 80)
-stats.Position = UDim2.new(0, 10, 1, -90)
-stats.Parent = gui
-local powerLabel = text(stats, { Size = UDim2.new(1, 0, 0.45, 0), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(80, 200, 255), Text = "Power 0" })
-local moneyLabel = text(stats, { Size = UDim2.new(1, 0, 0.55, 0), Position = UDim2.fromScale(0, 0.45), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(90, 255, 90), Text = "$0" })
+local stats = Theme.new("Frame", { Name = "Stats", Size = UDim2.fromOffset(340, 96), AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, -8), Parent = gui })
+local powerLabel = Kit.label({ Text = "Power 0", TextSize = 24, Size = UDim2.fromOffset(340, 30), XAlign = Enum.TextXAlignment.Left, Wrapped = false, Gradient = ColorSequence.new(Color3.fromRGB(150, 230, 255), Color3.fromRGB(60, 160, 255)), Parent = stats })
+local moneyLabel = Kit.label({ Text = "$0", TextSize = 48, Size = UDim2.fromOffset(340, 56), Position = UDim2.fromOffset(0, 34), XAlign = Enum.TextXAlignment.Left, Wrapped = false, Stroke = 3.5, Gradient = ColorSequence.new(C.MoneyTop, C.Money), Parent = stats })
 
--- Info del arma y del establo arriba a la derecha
-local info = text(gui, { Size = UDim2.fromOffset(260, 50), Position = UDim2.new(1, -270, 0, 8), TextXAlignment = Enum.TextXAlignment.Right, Text = "" })
+-- Ingreso arriba al centro, pista debajo, arma y suerte arriba a la derecha
+local incomeLabel = Kit.label({ Text = "+$0/s", TextSize = 46, Size = UDim2.fromOffset(420, 52), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 4), Wrapped = false, Stroke = 3.5, Gradient = ColorSequence.new(C.MoneyTop, C.Money), Parent = gui })
+local hint = Kit.label({ Text = "", TextSize = 24, Size = UDim2.fromOffset(640, 30), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 58), Scaled = true, Parent = gui })
+local info = Kit.label({ Text = "", TextSize = 22, Size = UDim2.fromOffset(320, 56), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 6), XAlign = Enum.TextXAlignment.Right, Scaled = true, Parent = gui })
 
--- Ingreso por segundo arriba al centro, pista debajo
-local incomeLabel = text(gui, { Size = UDim2.new(0.5, 0, 0, 44), Position = UDim2.new(0.25, 0, 0, 6), Text = "+$0/s", TextColor3 = Color3.fromRGB(90, 255, 90) })
-local hint = text(gui, { Size = UDim2.new(0.6, 0, 0, 28), Position = UDim2.new(0.2, 0, 0, 52), Text = "" })
-local shootBtn = button(gui, "SHOOT!", Color3.fromRGB(230, 50, 50), UDim2.fromOffset(200, 70), UDim2.new(0.5, -100, 1, -100))
+local shootBtn = Kit.button({ Name = "Shoot", Text = "SHOOT!", Color = "Red", Size = UDim2.fromOffset(230, 80), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -16), TextSize = 40, Parent = gui })
 shootBtn.Visible = false
-
-local homeBtn = button(gui, "Base", Color3.fromRGB(110, 110, 200), UDim2.fromOffset(100, 44), UDim2.new(1, -110, 1, -54))
+Kit.button({ Name = "Home", Text = "Base", Color = "Blue", Size = UDim2.fromOffset(120, 56), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -12, 1, -12), TextSize = 28, Parent = gui, OnClick = function()
+	action("Home")
+end })
 
 -- Avisos flotantes
 local function toast(msg: string, color: Color3?)
-	local t = text(gui, {
-		Size = UDim2.new(0.5, 0, 0, 34),
-		Position = UDim2.new(0.25, 0, 0.3, 0),
-		Text = msg,
-		TextColor3 = color or Color3.new(1, 1, 1),
-		ZIndex = 20,
-	})
-	TweenService:Create(t, TweenInfo.new(1.6), { Position = UDim2.new(0.25, 0, 0.2, 0), TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	local t = Kit.label({ Text = msg, TextSize = 30, Size = UDim2.fromOffset(620, 40), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.3), Color = color or C.White, Scaled = true, ZIndex = 20, Parent = gui })
+	local stroke = t:FindFirstChildOfClass("UIStroke")
+	Theme.tween(t, TweenInfo.new(1.6), { Position = UDim2.fromScale(0.5, 0.2), TextTransparency = 1 })
+	if stroke then
+		Theme.tween(stroke, TweenInfo.new(1.6), { Transparency = 1 })
+	end
 	task.delay(1.7, t.Destroy, t)
 end
 
@@ -132,114 +91,101 @@ Remotes.Notify.OnClientEvent:Connect(function(msg, color)
 	toast(msg, color)
 end)
 
----------------------------------------------------------------- Paneles
+---------------------------------------------------------------- Ventanas
 
-local panel = Instance.new("Frame")
-panel.Size = UDim2.new(0.6, 0, 0.7, 0)
-panel.Position = UDim2.new(0.2, 0, 0.15, 0)
-panel.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-panel.Visible = false
-panel.ZIndex = 5
-corner(panel, 14)
-stroke(panel, Color3.new(0, 0, 0), 4)
-local sizeLimit = Instance.new("UISizeConstraint")
-sizeLimit.MinSize = Vector2.new(300, 260)
-sizeLimit.MaxSize = Vector2.new(720, 520)
-sizeLimit.Parent = panel
-panel.Parent = gui
+local WINDOWS = {
+	Shop = { Title = "Weapon Shop", Icon = "store", Fallback = "🛒", Color = "Lime" },
+	Stable = { Title = "Stable", Icon = "platform", Fallback = "🐾", Color = "Orange" },
+	Index = { Title = "Index", Icon = "book", Fallback = "📖", Color = "Blue" },
+	Robux = { Title = "Robux Shop", Icon = "robux", Fallback = "⬢", Color = "Gold" },
+}
+local HEADER = 62
 
-local panelTitle = text(panel, { Size = UDim2.new(1, -70, 0, 42), Position = UDim2.fromOffset(14, 6), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6 })
-local closeBtn = button(panel, "X", Color3.fromRGB(230, 50, 50), UDim2.fromOffset(42, 42), UDim2.new(1, -50, 0, 6))
-closeBtn.ZIndex = 6
-local header = Instance.new("Frame")
-header.BackgroundTransparency = 1
-header.Size = UDim2.new(1, -24, 0, 0)
-header.Position = UDim2.fromOffset(12, 54)
-header.ZIndex = 6
-header.Parent = panel
-local scroll = Instance.new("ScrollingFrame")
-scroll.BackgroundTransparency = 1
-scroll.BorderSizePixel = 0
-scroll.ScrollBarThickness = 8
-scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scroll.CanvasSize = UDim2.new()
-scroll.ZIndex = 6
-scroll.Parent = panel
-local grid = Instance.new("UIGridLayout")
-grid.CellPadding = UDim2.fromOffset(8, 8)
-grid.SortOrder = Enum.SortOrder.LayoutOrder
-grid.Parent = scroll
+local panel = Theme.new("Frame", { Name = "Window", Size = UDim2.fromOffset(740, 480), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.52), BackgroundColor3 = C.Panel, BackgroundTransparency = 0.18, Visible = false, ZIndex = 5, Parent = gui })
+Theme.corner(panel, 6)
+Theme.stroke(panel, 3.5, C.Outline)
+Theme.new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Selectable = false, Text = "", ZIndex = 5, Parent = panel })
+local windowHeader = Theme.new("Frame", { Name = "Header", Size = UDim2.new(1, 0, 0, HEADER), ZIndex = 6, Parent = panel })
+local headerIcon: GuiObject? = nil
+local panelTitle = Kit.label({ Name = "Title", TextSize = 40, Size = UDim2.new(1, -230, 1, -6), Position = UDim2.fromOffset(74, 3), XAlign = Enum.TextXAlignment.Left, Scaled = true, ZIndex = 8, Stroke = 3.5, Parent = windowHeader })
+local closeBtn = Kit.button({ Name = "Close", Text = "X", Color = "Red", Size = UDim2.fromOffset(54, 50), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), TextSize = 34, ZIndex = 8, Parent = windowHeader, OnClick = function()
+	currentPanel = nil
+	renderPanel()
+end })
+local headerButtons = Theme.new("Frame", { Name = "HeaderButtons", Size = UDim2.new(0, 420, 1, -12), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -72, 0.5, 0), ZIndex = 8, Parent = windowHeader })
+Theme.list(headerButtons, 8, true, Enum.HorizontalAlignment.Right)
+local scroll = Kit.scroll({ Position = UDim2.fromOffset(12, HEADER + 12), Size = UDim2.new(1, -24, 1, -HEADER - 22), ZIndex = 6, Parent = panel })
+local grid = Theme.new("UIGridLayout", { CellPadding = UDim2.fromOffset(10, 14), SortOrder = Enum.SortOrder.LayoutOrder, Parent = scroll })
+Theme.padding(scroll, 10, 6)
 
-local currentPanel: string? = nil
-local renderPanel: () -> ()
-
-local function card(order: number, color: Color3): Frame
-	local f = Instance.new("Frame")
-	f.LayoutOrder = order
-	f.BackgroundColor3 = color
-	f.ZIndex = 7
-	corner(f, 8)
-	stroke(f, Color3.new(0, 0, 0), 2)
-	f.Parent = scroll
-	return f
-end
-
-local function setHeader(height: number)
-	header.Size = UDim2.new(1, -24, 0, height)
-	scroll.Position = UDim2.fromOffset(12, 58 + height)
-	scroll.Size = UDim2.new(1, -24, 1, -70 - height)
+local currentHeaderColor = ""
+local function setWindow(name: string)
+	local def = WINDOWS[name]
+	if currentHeaderColor ~= def.Color then
+		for _, c in windowHeader:GetChildren() do
+			if c.Name == "FaceGradient" or c.Name == "FaceInner" or c.Name == "Outline" or c:IsA("UICorner") then
+				c:Destroy()
+			end
+		end
+		Kit.face(windowHeader, def.Color, { Stroke = 3, Radius = 5 })
+		currentHeaderColor = def.Color
+	end
+	if headerIcon then
+		headerIcon:Destroy()
+	end
+	headerIcon = Kit.icon(def.Icon, def.Fallback, { Size = UDim2.fromOffset(88, 88), Position = UDim2.fromOffset(-22, -22), Rotation = -8, ZIndex = 9, Parent = windowHeader })
+	panelTitle.Text = def.Title
 end
 
 local function clearPanel()
 	for _, c in scroll:GetChildren() do
-		if not c:IsA("UIGridLayout") then
+		if c:IsA("GuiObject") then
 			c:Destroy()
 		end
 	end
-	header:ClearAllChildren()
+	headerButtons:ClearAllChildren()
+	Theme.list(headerButtons, 8, true, Enum.HorizontalAlignment.Right)
 end
 
-local function action(kind: string, arg: any?)
-	Remotes.Action:FireServer(kind, arg)
+local function headerButton(textValue: string, color: string, order: number, onClick: () -> ())
+	Kit.button({ Text = textValue, Color = color, Size = UDim2.fromOffset(200, 46), TextSize = 22, LayoutOrder = order, ZIndex = 8, Parent = headerButtons, OnClick = onClick })
+end
+
+-- Tarjeta oscura con borde de color y textos (nombre, detalle, extra) + botón opcional
+local function itemCard(order: number, accent: Color3, title: string, titleColor: Color3?, line1: string, line2: string?, line2Color: Color3?): Frame
+	local card = Kit.card({ Size = UDim2.fromOffset(100, 100), LayoutOrder = order, Parent = scroll })
+	card.ZIndex = 6
+	local accentBar = Theme.new("Frame", { Size = UDim2.new(0, 6, 1, -12), Position = UDim2.fromOffset(6, 6), BackgroundColor3 = accent, BackgroundTransparency = 0, ZIndex = 7, Parent = card })
+	Theme.corner(accentBar, 3)
+	Kit.label({ Text = title, TextSize = 24, Size = UDim2.new(1, -24, 0, 28), Position = UDim2.fromOffset(18, 6), XAlign = Enum.TextXAlignment.Left, Scaled = true, Color = titleColor or C.White, ZIndex = 7, Parent = card })
+	Kit.label({ Text = line1, TextSize = 18, Size = UDim2.new(1, -24, 0, 22), Position = UDim2.fromOffset(18, 36), XAlign = Enum.TextXAlignment.Left, Scaled = true, Font = Theme.FontBold, Color = C.TextDim, ZIndex = 7, Parent = card })
+	if line2 then
+		Kit.label({ Text = line2, TextSize = 20, Size = UDim2.new(1, -24, 0, 22), Position = UDim2.fromOffset(18, 58), XAlign = Enum.TextXAlignment.Left, Scaled = true, Color = line2Color or C.Money, ZIndex = 7, Parent = card })
+	end
+	return card
+end
+
+local function cardButton(card: Frame, label: string, color: string, size: UDim2, pos: UDim2, onClick: () -> ())
+	Kit.button({ Text = label, Color = color, Size = size, Position = pos, TextSize = 22, ZIndex = 8, Parent = card, OnClick = onClick })
 end
 
 local function renderShop()
-	panelTitle.Text = "Weapon Shop"
-	setHeader(0)
-	grid.CellSize = UDim2.new(0.5, -4, 0, 96)
+	grid.CellSize = UDim2.new(0.5, -6, 0, 96)
 	for i, w in Config.Weapons do
 		if w.exclusive and not state.owned[tostring(i)] then
 			continue
 		end
 		local owned = state.owned[tostring(i)]
-		local f = card(i, if owned then Color3.fromRGB(60, 90, 60) else Color3.fromRGB(70, 70, 90))
-		local sw = Instance.new("Frame")
-		sw.Size = UDim2.fromOffset(10, 76)
-		sw.Position = UDim2.fromOffset(8, 10)
-		sw.BackgroundColor3 = w.color
-		sw.ZIndex = 8
-		corner(sw, 4)
-		sw.Parent = f
-		text(f, { Size = UDim2.new(1, -130, 0, 30), Position = UDim2.fromOffset(26, 8), Text = i .. ". " .. w.name, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 8 })
-		text(f, {
-			Size = UDim2.new(1, -130, 0, 22),
-			Position = UDim2.fromOffset(26, 42),
-			Text = "Reach: Epoch " .. Config.epochAt(w.range) .. (if w.luck then " · " .. w.luck .. "x luck" else ""),
-			TextColor3 = Color3.fromRGB(200, 220, 255),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			ZIndex = 8,
-		})
+		local card = itemCard(i, w.color, i .. ". " .. w.name, nil, "Reach: Epoch " .. Config.epochAt(w.range) .. (if w.luck then " · " .. w.luck .. "x luck" else ""))
 		local label, color
 		if state.equipped == i then
-			label, color = "Equipped", Color3.fromRGB(120, 120, 120)
+			label, color = "Equipped", "Gray"
 		elseif owned then
-			label, color = "Equip", Color3.fromRGB(40, 170, 230)
+			label, color = "Equip", "Blue"
 		else
-			label, color = "$" .. fmt(w.price), Color3.fromRGB(60, 200, 50)
+			label, color = "$" .. fmt(w.price), if state.money >= w.price then "Lime" else "Dark"
 		end
-		local b = button(f, label, color, UDim2.fromOffset(96, 44), UDim2.new(1, -104, 0.5, -22))
-		b.ZIndex = 8
-		b.Activated:Connect(function()
+		cardButton(card, label, color, UDim2.fromOffset(120, 50), UDim2.new(1, -130, 1, -58), function()
 			action("BuyWeapon", i)
 		end)
 	end
@@ -248,51 +194,40 @@ end
 local function renderStable()
 	local cap = Config.stableCapacity(state.stableLevel)
 	panelTitle.Text = string.format("Stable  %d/%d", #state.animals, cap)
-	setHeader(60)
-	local function upgrade(label: string, sub: string, x: number, kind: string, maxed: boolean)
-		local b = button(header, if maxed then label .. " (MAX)" else label .. "  " .. sub, Color3.fromRGB(230, 140, 40), UDim2.new(0.5, -4, 1, 0), UDim2.new(x, if x > 0 then 4 else 0, 0, 0))
-		b.ZIndex = 7
-		b.Activated:Connect(function()
-			action(kind)
-		end)
-	end
-	upgrade("+5 Slots", "$" .. fmt(Config.stableUpgradeCost(state.stableLevel)), 0, "UpgradeStable", state.stableLevel >= Config.STABLE_MAX_LEVEL)
-	upgrade("Trainer Lv" .. state.trainerLevel + 1, "$" .. fmt(Config.trainerUpgradeCost(state.trainerLevel)), 0.5, "UpgradeTrainer", state.trainerLevel >= Config.TRAINER_MAX_LEVEL)
+	local maxedS = state.stableLevel >= Config.STABLE_MAX_LEVEL
+	local maxedT = state.trainerLevel >= Config.TRAINER_MAX_LEVEL
+	headerButton(if maxedS then "Slots MAX" else "+5 Slots $" .. fmt(Config.stableUpgradeCost(state.stableLevel)), "Lime", 1, function()
+		action("UpgradeStable")
+	end)
+	headerButton(if maxedT then "Trainer MAX" else "Trainer $" .. fmt(Config.trainerUpgradeCost(state.trainerLevel)), "Orange", 2, function()
+		action("UpgradeTrainer")
+	end)
 
-	grid.CellSize = UDim2.new(0.333, -6, 0, 110)
-	-- Primero los que traes en la mano, luego los colocados
-	for slot, id in state.held do
-		local a, v = Config.decode(id)
+	grid.CellSize = UDim2.new(0.333, -7, 0, 124)
+	local function animalCard(order: number, entry: number, inHand: boolean)
+		local a, v = Config.decode(entry)
 		local rar = Config.Rarities[a.rarity]
-		local f = card(slot, Color3.fromRGB(80, 70, 50))
-		stroke(f, if v > 0 then Config.Variants[v].color else rar.color, 3)
-		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 4), Text = "IN HAND · " .. rar.name, TextColor3 = rar.color, ZIndex = 8 })
-		text(f, { Size = UDim2.new(1, -10, 0, 22), Position = UDim2.fromOffset(5, 22), Text = Config.entryName(id), TextColor3 = if v > 0 then Config.Variants[v].color else Color3.new(1, 1, 1), ZIndex = 8 })
-		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 46), Text = "$" .. fmt(Config.entryIncome(id)) .. "/s", TextColor3 = Color3.fromRGB(90, 255, 90), ZIndex = 8 })
-		local b = button(f, "Sell $" .. fmt(Config.sellValue(id)), Color3.fromRGB(200, 60, 60), UDim2.new(1, -16, 0, 30), UDim2.new(0, 8, 1, -36))
-		b.ZIndex = 8
-		b.Activated:Connect(function()
-			action("SellHeld", slot)
-		end)
+		local vColor = if v > 0 then Config.Variants[v].color else nil
+		local card = itemCard(order, vColor or rar.color, Config.entryName(entry), vColor, (if inHand then "IN HAND · " else "") .. rar.name, "$" .. fmt(Config.entryIncome(entry)) .. "/s")
+		if inHand then
+			cardButton(card, "Sell $" .. fmt(Config.sellValue(entry)), "Red", UDim2.new(1, -24, 0, 34), UDim2.new(0, 12, 1, -40), function()
+				action("SellHeld", order)
+			end)
+		else
+			cardButton(card, "Sell", "Red", UDim2.new(0.5, -16, 0, 34), UDim2.new(0, 12, 1, -40), function()
+				action("Sell", order - 1000)
+			end)
+			cardButton(card, "Pick up", "Blue", UDim2.new(0.5, -16, 0, 34), UDim2.new(0.5, 4, 1, -40), function()
+				action("PickUp", order - 1000)
+			end)
+		end
 	end
-	for slot, id in state.animals do
-		local a, v = Config.decode(id)
-		local rar = Config.Rarities[a.rarity]
-		local f = card(100 + slot, Color3.fromRGB(60, 60, 80))
-		stroke(f, if v > 0 then Config.Variants[v].color else rar.color, 3)
-		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 4), Text = rar.name, TextColor3 = rar.color, ZIndex = 8 })
-		text(f, { Size = UDim2.new(1, -10, 0, 22), Position = UDim2.fromOffset(5, 22), Text = Config.entryName(id), TextColor3 = if v > 0 then Config.Variants[v].color else Color3.new(1, 1, 1), ZIndex = 8 })
-		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 46), Text = "$" .. fmt(Config.entryIncome(id)) .. "/s", TextColor3 = Color3.fromRGB(90, 255, 90), ZIndex = 8 })
-		local b = button(f, "Sell $" .. fmt(Config.sellValue(id)), Color3.fromRGB(200, 60, 60), UDim2.new(0.5, -10, 0, 30), UDim2.new(0, 8, 1, -36))
-		b.ZIndex = 8
-		b.Activated:Connect(function()
-			action("Sell", slot)
-		end)
-		local pick = button(f, "Pick up", Color3.fromRGB(40, 170, 230), UDim2.new(0.5, -10, 0, 30), UDim2.new(0.5, 2, 1, -36))
-		pick.ZIndex = 8
-		pick.Activated:Connect(function()
-			action("PickUp", slot)
-		end)
+	-- Primero los que traes en la mano, luego los colocados
+	for slot, entry in state.held do
+		animalCard(slot, entry, true)
+	end
+	for slot, entry in state.animals do
+		animalCard(1000 + slot, entry, false)
 	end
 end
 
@@ -302,36 +237,30 @@ local function renderIndex()
 		found += 1
 	end
 	panelTitle.Text = string.format("Index  %d/%d", found, #Config.AnimalOrder)
-	setHeader(0)
-	grid.CellSize = UDim2.new(0.2, -7, 0, 70)
+	grid.CellSize = UDim2.new(0.2, -8, 0, 84)
 	for n, id in Config.AnimalOrder do
 		local a = Config.Animals[id]
 		local rar = Config.Rarities[a.rarity]
 		local known = state.discovered[tostring(id)]
-		local f = card(n, if known then a.color2 else Color3.fromRGB(30, 30, 35))
-		stroke(f, rar.color, 2)
-		text(f, { Size = UDim2.new(1, -6, 0, 16), Position = UDim2.fromOffset(3, 4), Text = Config.Epochs[a.epoch].name, TextColor3 = Color3.fromRGB(220, 220, 220), ZIndex = 8 })
-		text(f, { Size = UDim2.new(1, -6, 0, 26), Position = UDim2.fromOffset(3, 22), Text = if known then a.name else "???", ZIndex = 8 })
-		text(f, { Size = UDim2.new(1, -6, 0, 14), Position = UDim2.fromOffset(3, 50), Text = rar.name, TextColor3 = rar.color, ZIndex = 8 })
+		local card = Kit.card({ Size = UDim2.fromOffset(100, 84), LayoutOrder = n, Parent = scroll })
+		card.ZIndex = 6
+		Theme.stroke(card, 2, rar.color)
+		Kit.label({ Text = Config.Epochs[a.epoch].name, TextSize = 14, Size = UDim2.new(1, -8, 0, 18), Position = UDim2.fromOffset(4, 4), Scaled = true, Font = Theme.FontBold, Color = C.TextDim, ZIndex = 7, Parent = card })
+		Kit.label({ Text = if known then a.name else "???", TextSize = 20, Size = UDim2.new(1, -8, 0, 34), Position = UDim2.fromOffset(4, 22), Scaled = true, ZIndex = 7, Parent = card })
+		Kit.label({ Text = rar.name, TextSize = 15, Size = UDim2.new(1, -8, 0, 18), Position = UDim2.fromOffset(4, 60), Scaled = true, Color = rar.color, ZIndex = 7, Parent = card })
 	end
 end
 
 local function renderRobux()
-	panelTitle.Text = "Robux Shop"
-	setHeader(0)
-	grid.CellSize = UDim2.new(0.5, -4, 0, 96)
+	grid.CellSize = UDim2.new(0.5, -6, 0, 108)
 	local function item(order: number, it, isPass: boolean)
 		local owned = isPass and state.passes[it.key]
-		local f = card(order, if owned then Color3.fromRGB(60, 90, 60) else Color3.fromRGB(70, 60, 95))
-		stroke(f, it.color, 3)
-		text(f, { Size = UDim2.new(1, -130, 0, 30), Position = UDim2.fromOffset(12, 8), Text = it.name, TextColor3 = it.color, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 8 })
-		text(f, { Size = UDim2.new(1, -130, 0, 36), Position = UDim2.fromOffset(12, 44), Text = it.desc, TextColor3 = Color3.fromRGB(220, 220, 240), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, ZIndex = 8 })
-		local b = button(f, if owned then "Owned" else "R$ " .. it.price, if owned then Color3.fromRGB(120, 120, 120) else Color3.fromRGB(60, 200, 50), UDim2.fromOffset(96, 44), UDim2.new(1, -104, 0.5, -22))
-		b.ZIndex = 8
-		b.Activated:Connect(function()
-			if owned then
-				return
-			end
+		local card = itemCard(order, it.color, it.name, it.color, it.desc)
+		if owned then
+			cardButton(card, "Owned", "Gray", UDim2.fromOffset(130, 50), UDim2.new(1, -140, 1, -58), function() end)
+			return
+		end
+		Kit.priceButton("Robux", it.price, { Size = UDim2.fromOffset(130, 50), Position = UDim2.new(1, -140, 1, -58), TextSize = 24, ZIndex = 8, Parent = card, OnClick = function()
 			if it.id == 0 then
 				action("TestBuy", it.key) -- sin ID: gratis en Studio
 			elseif isPass then
@@ -339,7 +268,7 @@ local function renderRobux()
 			else
 				MarketplaceService:PromptProductPurchase(player, it.id)
 			end
-		end)
+		end })
 	end
 	for n, it in Config.Passes do
 		item(n, it, true)
@@ -354,8 +283,15 @@ renderPanel = function()
 		panel.Visible = false
 		return
 	end
+	local wasOpen = panel.Visible
 	clearPanel()
+	setWindow(currentPanel)
 	panel.Visible = true
+	if not wasOpen then
+		local scale = panel:FindFirstChild("PopScale") or Theme.new("UIScale", { Name = "PopScale", Parent = panel })
+		scale.Scale = 0.85
+		Theme.tween(scale, Theme.Pop, { Scale = 1 })
+	end
 	if currentPanel == "Shop" then
 		renderShop()
 	elseif currentPanel == "Stable" then
@@ -367,29 +303,6 @@ renderPanel = function()
 	end
 end
 
-local function toggle(name: string)
-	currentPanel = if currentPanel == name then nil else name
-	renderPanel()
-end
-shopBtn.Activated:Connect(function()
-	toggle("Shop")
-end)
-stableBtn.Activated:Connect(function()
-	toggle("Stable")
-end)
-indexBtn.Activated:Connect(function()
-	toggle("Index")
-end)
-robuxBtn.Activated:Connect(function()
-	toggle("Robux")
-end)
-closeBtn.Activated:Connect(function()
-	currentPanel = nil
-	renderPanel()
-end)
-homeBtn.Activated:Connect(function()
-	action("Home")
-end)
 
 ---------------------------------------------------------------- Estado
 
@@ -896,6 +809,67 @@ RunService.Heartbeat:Connect(function(dt)
 			if p:IsA("BasePart") and p.Transparency < 1 then
 				p.Color = Color3.fromHSV((hue + p.Position.Y * 0.03) % 1, 0.8, 1)
 			end
+		end
+	end
+end)
+
+-- Animales del establo: caminan por el corral y de vez en cuando saltan (sólo en este cliente)
+type Wander = { pos: Vector3, target: Vector3, wait: number, hop: number, yaw: number }
+local wanderers: { [Model]: Wander } = setmetatable({}, { __mode = "k" }) :: any
+local wanderRng = Random.new()
+
+local function penPoint(center: CFrame, size: Vector3): Vector3
+	return (center * CFrame.new(wanderRng:NextNumber(-size.X, size.X), 0, wanderRng:NextNumber(-size.Z, size.Z))).Position
+end
+
+RunService.Heartbeat:Connect(function(dt)
+	local plots = workspace:FindFirstChild("Plots")
+	if not plots then
+		return
+	end
+	local camPos = camera.CFrame.Position
+	for _, plot in plots:GetChildren() do
+		local center = plot:GetAttribute("PenCenter")
+		local size = plot:GetAttribute("PenSize")
+		local folder = plot:FindFirstChild("Animals")
+		if not center or not size or not folder or (center.Position - camPos).Magnitude > 260 then
+			continue
+		end
+		for _, m in folder:GetChildren() do
+			if not m:IsA("Model") then
+				continue
+			end
+			local w = wanderers[m]
+			if not w then
+				local p = m:GetPivot().Position
+				w = { pos = Vector3.new(p.X, center.Position.Y, p.Z), target = penPoint(center, size), wait = wanderRng:NextNumber(0, 2), hop = 0, yaw = math.pi }
+				wanderers[m] = w
+			end
+			local lift = 0
+			if w.hop > 0 then
+				-- salto: arco de 0.5 s
+				w.hop = math.max(0, w.hop - dt)
+				lift = math.sin((1 - w.hop / 0.5) * math.pi) * 2.2
+			elseif w.wait > 0 then
+				w.wait -= dt
+			else
+				local delta = w.target - w.pos
+				local dist = Vector3.new(delta.X, 0, delta.Z).Magnitude
+				if dist < 0.5 then
+					w.target = penPoint(center, size)
+					w.wait = wanderRng:NextNumber(0.8, 3)
+					if wanderRng:NextNumber() < 0.35 then
+						w.hop = 0.5
+					end
+				else
+					local dir = Vector3.new(delta.X, 0, delta.Z) / dist
+					w.pos += dir * math.min(dist, 5 * dt)
+					w.yaw = math.atan2(-dir.X, -dir.Z)
+					-- pasitos: rebote chiquito al caminar
+					lift = math.abs(math.sin(os.clock() * 12 + w.pos.X)) * 0.35
+				end
+			end
+			m:PivotTo(CFrame.new(w.pos + Vector3.new(0, lift, 0)) * CFrame.Angles(0, w.yaw, 0))
 		end
 	end
 end)

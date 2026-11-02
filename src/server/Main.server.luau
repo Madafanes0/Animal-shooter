@@ -162,13 +162,13 @@ local function fence(model: Model, a: Vector3, b: Vector3)
 end
 
 -- Corral en coordenadas locales de la parcela
-local PEN_Z, PEN_HW, PEN_HD = -12, 25, 20
+local PEN_Z, PEN_HW, PEN_HD = -14, 32, 26
 
 local function buildPlot(i: number): Model
 	local m = Instance.new("Model")
 	m.Name = "Plot" .. i
 	local cf = plotCFrames[i]
-	local plotFloor = plotPart(m, Vector3.new(56, 0.4, 56), cf * CFrame.new(0, 0.2, -14), Color3.fromRGB(120, 225, 80), Enum.Material.SmoothPlastic)
+	local plotFloor = plotPart(m, Vector3.new(72, 0.4, 64), cf * CFrame.new(0, 0.2, -16), Color3.fromRGB(120, 225, 80), Enum.Material.SmoothPlastic)
 	Tiles(plotFloor, { Enum.NormalId.Top }, 6)
 
 	-- Establo grande (corral al fondo, granero detrás)
@@ -204,18 +204,18 @@ local function buildPlot(i: number): Model
 	board.Parent = signBoard
 
 	-- Campo de tiro afuera de la zona verde, frente al establo (piso de tierra propio)
-	local range = plotPart(m, Vector3.new(22, 0.3, 20), cf * CFrame.new(15, 0.15, 26), Color3.fromRGB(200, 160, 110), Enum.Material.SmoothPlastic)
+	local range = plotPart(m, Vector3.new(22, 0.3, 20), cf * CFrame.new(18, 0.15, 28), Color3.fromRGB(200, 160, 110), Enum.Material.SmoothPlastic)
 	Tiles(range, { Enum.NormalId.Top }, 4)
-	for _, x in { 4, 26 } do
-		plotPart(m, Vector3.new(0.6, 1.2, 20), cf * CFrame.new(x, 0.6, 26), Color3.fromRGB(150, 90, 50), Enum.Material.Wood)
+	for _, x in { 7, 29 } do
+		plotPart(m, Vector3.new(0.6, 1.2, 20), cf * CFrame.new(x, 0.6, 28), Color3.fromRGB(150, 90, 50), Enum.Material.Wood)
 	end
-	local pad = plotPart(m, Vector3.new(8, 0.5, 8), cf * CFrame.new(15, 0.45, 21), Color3.fromRGB(255, 200, 60), Enum.Material.SmoothPlastic)
+	local pad = plotPart(m, Vector3.new(8, 0.5, 8), cf * CFrame.new(18, 0.45, 23), Color3.fromRGB(255, 200, 60), Enum.Material.SmoothPlastic)
 	pad.Name = "TrainerPad"
 	local target = Instance.new("Part")
 	target.Anchored = true
 	target.Shape = Enum.PartType.Cylinder
 	target.Size = Vector3.new(1, 7, 7)
-	target.CFrame = cf * CFrame.new(15, 4.5, 34) * CFrame.Angles(0, math.rad(90), 0)
+	target.CFrame = cf * CFrame.new(18, 4.5, 36) * CFrame.Angles(0, math.rad(90), 0)
 	target.Color = Color3.new(1, 1, 1)
 	target.Name = "TrainerTarget"
 	target.Parent = m
@@ -235,7 +235,7 @@ local function buildPlot(i: number): Model
 	tt.Parent = trainerSign
 	trainerSign.Parent = pad
 
-	local spawnPart = plotPart(m, Vector3.new(7, 0.4, 7), cf * CFrame.new(-14, 0.3, 22), Color3.fromRGB(80, 160, 255), Enum.Material.SmoothPlastic)
+	local spawnPart = plotPart(m, Vector3.new(7, 0.4, 7), cf * CFrame.new(-18, 0.3, 24), Color3.fromRGB(80, 160, 255), Enum.Material.SmoothPlastic)
 	spawnPart.Name = "Spawn"
 
 	local animals = Instance.new("Folder")
@@ -243,6 +243,9 @@ local function buildPlot(i: number): Model
 	animals.Parent = m
 
 	m:SetAttribute("Index", i)
+	-- El cliente usa el corral para que los animales caminen por ahí
+	m:SetAttribute("PenCenter", penCenter + Vector3.new(0, 0.4, 0))
+	m:SetAttribute("PenSize", Vector3.new(hw - 3, 0, hd - 3))
 	m.Parent = plotsFolder
 
 	return m
@@ -262,11 +265,11 @@ local function refreshStable(plr: Player)
 	local folder = plotModels[i].Animals
 	folder:ClearAllChildren()
 	local center = plotCFrames[i] * CFrame.new(0, 0.4, PEN_Z)
-	local cols = 10
+	local cols = 12
 	for n, id in d.animals do
 		local col = (n - 1) % cols
 		local row = math.floor((n - 1) / cols)
-		local pos = center * CFrame.new(-20.7 + col * 4.6, 0, -15 + row * 5.5) * CFrame.Angles(0, math.rad(180), 0)
+		local pos = center * CFrame.new(-27.5 + col * 5, 0, -20 + row * 8) * CFrame.Angles(0, math.rad(180), 0)
 		local beast = Models.animal(id, pos, true)
 		beast:ScaleTo(beast:GetScale() * 0.6)
 		beast:SetAttribute("Owner", plr.UserId)
@@ -733,7 +736,7 @@ local function onTrainer(plr: Player): boolean
 		return false
 	end
 	local p = plotCFrames[i]:PointToObjectSpace(root.Position)
-	return p.X > 4 and p.X < 26 and p.Z > 16 and p.Z < 36
+	return p.X > 7 and p.X < 29 and p.Z > 18 and p.Z < 38
 end
 
 task.spawn(function()

@@ -113,7 +113,7 @@ function Map.build(): { CFrame }
 	local grass = Color3.fromRGB(95, 210, 60)
 
 	-- Zona de bases (todo cerrado con muro a cuadros, abierto sólo hacia la línea de tiro)
-	local baseHalf = 222
+	local baseHalf = 250
 	local back, front = -172, -10
 	floor(Vector3.new(baseHalf * 2, 2, front - back), Vector3.new(0, -1, (back + front) / 2), grass)
 	checkerWall(Vector3.new(-baseHalf, 0, back), Vector3.new(-baseHalf, 0, front), 40)
@@ -185,8 +185,8 @@ function Map.build(): { CFrame }
 	-- Parcelas (bases): 6 en fila
 	local plotCFrames = {}
 	for i = 1, Config.PLOTS do
-		local x = -175 + (i - 1) * 70
-		plotCFrames[i] = CFrame.new(x, 0, -112)
+		local x = -200 + (i - 1) * 80
+		plotCFrames[i] = CFrame.new(x, 0, -118)
 	end
 	return plotCFrames
 end

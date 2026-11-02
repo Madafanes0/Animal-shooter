@@ -6,7 +6,7 @@
     "ServerScriptService": { "Server": { "$path": "src/server" } },
     "StarterPlayer": {
       "StarterPlayerScripts": { "Client": { "$path": "src/client" } },
-      "$properties": { "CameraMaxZoomDistance": 60 }
+      "$properties": { "CameraMaxZoomDistance": 60, "CharacterWalkSpeed": 30, "CharacterUseJumpPower": true, "CharacterJumpPower": 55 }
     },
     "Lighting": { "$properties": { "Technology": "Future", "ClockTime": 12, "GlobalShadows": true, "Ambient": [0.55, 0.55, 0.55], "OutdoorAmbient": [0.65, 0.65, 0.65], "EnvironmentSpecularScale": 0, "EnvironmentDiffuseScale": 0.5 } },
     "TextChatService": { "$properties": { "ChatVersion": "TextChatService" } }

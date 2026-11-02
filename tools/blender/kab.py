@@ -179,14 +179,74 @@ def shade(h, f):
     return "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
 
 
+# ------------------------------------------------------------------ studs
+STUD = 0.26  # tamaño de un stud (unidades de Blender)
+
+
+def stud_pixel(h, x, y, cell):
+    """Color del pixel (x, y) de un cuadro con un stud: borde oscuro, stud con luz arriba-izquierda."""
+    r, g, b = hex_rgb(h)
+
+    def mul(f):
+        return (min(1, r * f), min(1, g * f), min(1, b * f))
+    if x == 0 or y == 0 or x == cell - 1 or y == cell - 1:
+        return mul(0.8)
+    lo, hi = cell * 0.28, cell * 0.72
+    if lo <= x < hi and lo <= y < hi:
+        if int(x) == int(lo) or int(y) == int(hi - 1):
+            return mul(1.14)  # filo con luz (arriba / izquierda; v crece hacia arriba)
+        if int(x) == int(hi - 1) or int(y) == int(lo):
+            return mul(0.86)  # sombra
+        return mul(1.03)
+    return (r, g, b)
+
+
+def stud_box(hx, hy, hz, loc):
+    """Caja hecha de quads de ~STUD; cada quad con UV 0..1 (luego se pasa al cuadro de su color)."""
+    import bmesh
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.new("UV")
+    # (eje normal, signo, eje u, eje v)
+    faces = [(0, 1, 1, 2), (0, -1, 1, 2), (1, 1, 0, 2), (1, -1, 0, 2), (2, 1, 0, 1), (2, -1, 0, 1)]
+    h = (hx, hy, hz)
+    for (n, sgn, a, b) in faces:
+        na = max(1, round(2 * h[a] / STUD))
+        nb = max(1, round(2 * h[b] / STUD))
+        for i in range(na):
+            for j in range(nb):
+                corners = []
+                for (di, dj) in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                    p = [0.0, 0.0, 0.0]
+                    p[n] = sgn * h[n]
+                    p[a] = -h[a] + 2 * h[a] * (i + di) / na
+                    p[b] = -h[b] + 2 * h[b] * (j + dj) / nb
+                    corners.append((bm.verts.new(p), (di, dj)))
+                # a×b apunta a +n salvo en el eje Y (x×z = -y)
+                if (sgn < 0) != (n == 1):
+                    corners.reverse()
+                f = bm.faces.new([c[0] for c in corners])
+                for loop, (_, (di, dj)) in zip(f.loops, corners):
+                    loop[uvl].uv = (di, dj)
+    bm.normal_update()
+    me = bpy.data.meshes.new("stud")
+    bm.to_mesh(me)
+    bm.free()
+    o = bpy.data.objects.new("stud", me)
+    o.location = loc
+    bpy.context.view_layer.active_layer_collection.collection.objects.link(o)
+    return o
+
+
 # ------------------------------------------------------------------ constructor de piezas
 class B:
     """Junta piezas (primitivas) con color; al final se unen en un solo objeto con UV a la paleta."""
 
-    def __init__(self, name):
+    def __init__(self, name, blocky=False):
         self.name = name
         self.objs = []
         self.colors = []
+        # blocky: todas las piezas son cajas con studs (estilo Lego/voxel); cada cuadrito de la cara es un stud
+        self.blocky = blocky
 
     def _color_index(self, h):
         h = h.lower()
@@ -196,6 +256,22 @@ class B:
 
     def add(self, kind, loc, size, color, rot=(0, 0, 0), seg=16, bevel=0.0):
         loc = Vector(loc)
+        if self.blocky:
+            hx, hy, hz = size
+            if kind == "torus":
+                hx, hy, hz = hx * 1.2, hy * 1.2, hz * 0.35
+            elif kind == "cone":
+                hx, hy = hx * 0.75, hy * 0.75
+            o = stud_box(max(hx, 0.04), max(hy, 0.04), max(hz, 0.04), loc)
+            o.rotation_euler = Euler([math.radians(r) for r in rot])
+            bpy.ops.object.select_all(action="DESELECT")
+            o.select_set(True)
+            bpy.context.view_layer.objects.active = o
+            bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+            o["ci"] = self._color_index(color)
+            o["studs"] = 1
+            self.objs.append(o)
+            return o
         if kind == "sphere":
             bpy.ops.mesh.primitive_uv_sphere_add(segments=seg, ring_count=max(6, seg // 2), radius=1, location=loc)
         elif kind == "cube":
@@ -246,6 +322,18 @@ class B:
         return self.rod(base, tip, r, color, cone=True)
 
     def eyes(self, x, y, z, r=0.2, blind=False):
+        if self.blocky:
+            # Ojos de pixel: cuadro blanco con pupila negra grande y un brillo
+            # los ojos redondos quedaban sobre la esfera; en caja la cara está más adelante
+            y -= r * 1.25
+            for s in (-1, 1):
+                if blind:
+                    self.box((s * x, y, z), (r * 2.0, r * 0.4, r * 0.6), "#d0d0d8")
+                    continue
+                self.box((s * x, y, z), (r * 1.9, r * 0.4, r * 2.1), WHITE)
+                self.box((s * x * 0.94, y - r * 0.2, z - r * 0.15), (r * 1.2, r * 0.25, r * 1.6), BLACK)
+                self.box((s * x * 0.94 + r * 0.28, y - r * 0.33, z + r * 0.3), (r * 0.45, r * 0.1, r * 0.45), WHITE)
+            return
         for s in (-1, 1):
             if blind:
                 self.ball((s * x, y, z), r * 0.9, "#d0d0d8", sq=(1, 0.5, 0.35))
@@ -258,7 +346,7 @@ class B:
         """Une todo en un objeto, pone UV a la paleta y le asigna el material con la textura."""
         n = len(self.colors)
         grid = max(1, math.ceil(math.sqrt(n)))
-        cell = 8
+        cell = 16 if self.blocky else 8
         px = grid * cell
         img_name = "pal_" + self.name
         if img_name in bpy.data.images:
@@ -266,12 +354,11 @@ class B:
         img = bpy.data.images.new(img_name, px, px)
         pixels = [0.0] * (px * px * 4)
         for i, h in enumerate(self.colors):
-            r, g, b = hex_rgb(h)
             cx, cy = (i % grid) * cell, (i // grid) * cell
-            for yy in range(cy, cy + cell):
-                for xx in range(cx, cx + cell):
-                    k = (yy * px + xx) * 4
-                    pixels[k:k + 4] = [r, g, b, 1.0]
+            for yy in range(cell):
+                for xx in range(cell):
+                    k = ((cy + yy) * px + cx + xx) * 4
+                    pixels[k:k + 4] = list(stud_pixel(h, xx, yy, cell) if self.blocky else hex_rgb(h)) + [1.0]
         img.pixels = pixels
         path = os.path.join(OUT, "tex", self.name.replace(" ", "_") + ".png")
         img.filepath_raw = path
@@ -281,10 +368,17 @@ class B:
             me = o.data
             uv = me.uv_layers.new(name="UV") if not me.uv_layers else me.uv_layers[0]
             i = o["ci"]
-            u = ((i % grid) * cell + cell / 2) / px
-            v = ((i // grid) * cell + cell / 2) / px
-            for loop in uv.data:
-                loop.uv = (u, v)
+            cx, cy = (i % grid) * cell, (i // grid) * cell
+            if o.get("studs"):
+                # cada quad trae UV local 0..1: va al cuadro (con stud) de su color
+                inset = 0.5
+                for loop in uv.data:
+                    lu, lv = loop.uv
+                    loop.uv = ((cx + inset + lu * (cell - 2 * inset)) / px, (cy + inset + lv * (cell - 2 * inset)) / px)
+            else:
+                u, v = (cx + cell / 2) / px, (cy + cell / 2) / px
+                for loop in uv.data:
+                    loop.uv = (u, v)
         bpy.ops.object.select_all(action="DESELECT")
         for o in self.objs:
             o.select_set(True)
@@ -976,7 +1070,7 @@ SHAPES = {
 def build_animal(name, legendary=None):
     reset()
     shape, c1, c2, ex = SPECIES[name]
-    b = B(name)
+    b = B(name, blocky=True)
     if name == "Storm Griffin":
         # Grifo: cuerpo de león con cabeza de águila (pico) y alas
         top, hy = build_quad(b, c1, c2, "ears_none tail_long wings slim")

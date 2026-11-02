@@ -26,7 +26,7 @@ gui.IgnoreGuiInset = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = player:WaitForChild("PlayerGui")
 
-local FONT = Enum.Font.FredokaOne
+local FONT = Enum.Font.LuckiestGuy
 
 local function corner(p: Instance, r: number?)
 	local c = Instance.new("UICorner")
@@ -104,8 +104,9 @@ local moneyLabel = text(stats, { Size = UDim2.new(1, 0, 0.55, 0), Position = UDi
 -- Info del arma y del establo arriba a la derecha
 local info = text(gui, { Size = UDim2.fromOffset(260, 50), Position = UDim2.new(1, -270, 0, 8), TextXAlignment = Enum.TextXAlignment.Right, Text = "" })
 
--- Pista central y botón de disparo
-local hint = text(gui, { Size = UDim2.new(0.6, 0, 0, 36), Position = UDim2.new(0.2, 0, 0, 10), Text = "" })
+-- Ingreso por segundo arriba al centro, pista debajo
+local incomeLabel = text(gui, { Size = UDim2.new(0.5, 0, 0, 44), Position = UDim2.new(0.25, 0, 0, 6), Text = "+$0/s", TextColor3 = Color3.fromRGB(90, 255, 90) })
+local hint = text(gui, { Size = UDim2.new(0.6, 0, 0, 28), Position = UDim2.new(0.2, 0, 0, 52), Text = "" })
 local shootBtn = button(gui, "SHOOT!", Color3.fromRGB(230, 50, 50), UDim2.fromOffset(200, 70), UDim2.new(0.5, -100, 1, -100))
 shootBtn.Visible = false
 
@@ -335,7 +336,8 @@ local function onState()
 		return
 	end
 	state = HttpService:JSONDecode(raw)
-	moneyLabel.Text = "$" .. fmt(state.money) .. "  (+$" .. fmt(state.income) .. "/s)"
+	moneyLabel.Text = "$" .. fmt(state.money)
+	incomeLabel.Text = "+$" .. fmt(state.income) .. "/s"
 	powerLabel.Text = "Power " .. fmt(state.power) .. "  (+" .. Config.trainerGain(state.trainerLevel) .. "/train)"
 	local w = Config.Weapons[state.equipped]
 	local reach = Config.shotDistance(state.equipped, state.power)
@@ -474,15 +476,18 @@ local function playShot(res)
 	TweenService:Create(hit, TweenInfo.new(0.4), { Size = Vector3.new(14, 14, 14), Transparency = 1 }):Play()
 	task.delay(0.5, hit.Destroy, hit)
 	banner(a, rar)
+	-- El animal se queda de pie: parpadea en rojo y se desvanece
 	if beast then
-		local b = beast
-		local pivot = b:GetPivot()
-		task.spawn(function()
-			for i = 1, 12 do
-				b:PivotTo(pivot * CFrame.new(0, 0, 0) * CFrame.Angles(0, 0, math.rad(90 * i / 12)) + Vector3.new(0, 0.1 * i, 0))
-				task.wait(0.02)
+		for _, p in beast:GetDescendants() do
+			if p:IsA("BasePart") then
+				local original = p.Color
+				p.Color = Color3.fromRGB(255, 60, 60)
+				task.delay(0.15, function()
+					p.Color = original
+				end)
+				TweenService:Create(p, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, 1.4), { Transparency = 1 }):Play()
 			end
-		end)
+		end
 	end
 	-- Órbita lenta alrededor del animal caído
 	local orbit0 = os.clock()

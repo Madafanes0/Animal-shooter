@@ -13,7 +13,7 @@ local function block(size: Vector3, pos: Vector3, color: Color3, parent: Instanc
 	p.Position = pos
 	p.Color = color
 	p.Material = material or Enum.Material.Plastic
-	p.TopSurface = Enum.SurfaceType.Studs
+	p.TopSurface = Enum.SurfaceType.Smooth
 	p.BottomSurface = Enum.SurfaceType.Smooth
 	p.Parent = parent or folder
 	return p
@@ -27,7 +27,7 @@ local function sign(text: string, pos: Vector3, color: Color3, parent: Instance?
 	local t = Instance.new("TextLabel")
 	t.Size = UDim2.fromScale(1, 1)
 	t.BackgroundTransparency = 1
-	t.Font = Enum.Font.FredokaOne
+	t.Font = Enum.Font.LuckiestGuy
 	t.TextScaled = true
 	t.TextColor3 = color
 	t.TextStrokeTransparency = 0
@@ -68,12 +68,13 @@ function Map.build(): { CFrame }
 	local grass = Color3.fromRGB(95, 210, 60)
 
 	-- Zona de bases
-	block(Vector3.new(480, 2, 240), Vector3.new(0, -1, -130), grass)
-	checkerWall(-242, -250, -10, 40, Color3.fromRGB(200, 120, 75), Color3.fromRGB(176, 102, 64))
-	checkerWall(242, -250, -10, 40, Color3.fromRGB(200, 120, 75), Color3.fromRGB(176, 102, 64))
-	block(Vector3.new(488, 40, 4), Vector3.new(0, 20, -252), Color3.fromRGB(176, 102, 64), nil, Enum.Material.SmoothPlastic)
+	local baseHalf = 172
+	block(Vector3.new(baseHalf * 2, 2, 110), Vector3.new(0, -1, -65), grass)
+	checkerWall(-baseHalf - 2, -120, -10, 40, Color3.fromRGB(200, 120, 75), Color3.fromRGB(176, 102, 64))
+	checkerWall(baseHalf + 2, -120, -10, 40, Color3.fromRGB(200, 120, 75), Color3.fromRGB(176, 102, 64))
+	block(Vector3.new(baseHalf * 2 + 8, 40, 4), Vector3.new(0, 20, -122), Color3.fromRGB(176, 102, 64), nil, Enum.Material.SmoothPlastic)
 	for _, side in { -1, 1 } do
-		block(Vector3.new(242 - halfW, 40, 4), Vector3.new(side * (halfW + (242 - halfW) / 2), 20, -10), Color3.fromRGB(200, 120, 75), nil, Enum.Material.SmoothPlastic)
+		block(Vector3.new(baseHalf - halfW, 40, 4), Vector3.new(side * (halfW + (baseHalf - halfW) / 2), 20, -10), Color3.fromRGB(200, 120, 75), nil, Enum.Material.SmoothPlastic)
 	end
 
 	-- Línea de tiro
@@ -104,8 +105,8 @@ function Map.build(): { CFrame }
 	-- Parcelas (bases): 6 en fila
 	local plotCFrames = {}
 	for i = 1, Config.PLOTS do
-		local x = -200 + (i - 1) * 80
-		plotCFrames[i] = CFrame.new(x, 0, -140)
+		local x = -140 + (i - 1) * 56
+		plotCFrames[i] = CFrame.new(x, 0, -65)
 	end
 	return plotCFrames
 end

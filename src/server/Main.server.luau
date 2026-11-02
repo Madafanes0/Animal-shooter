@@ -108,7 +108,7 @@ local function plotPart(model: Model, size: Vector3, cf: CFrame, color: Color3, 
 	p.CFrame = cf
 	p.Color = color
 	p.Material = material or Enum.Material.Plastic
-	p.TopSurface = Enum.SurfaceType.Studs
+	p.TopSurface = Enum.SurfaceType.Smooth
 	p.Parent = model
 	return p
 end
@@ -133,31 +133,31 @@ local function buildPlot(i: number): Model
 	local m = Instance.new("Model")
 	m.Name = "Plot" .. i
 	local cf = plotCFrames[i]
-	plotPart(m, Vector3.new(70, 0.4, 150), cf * CFrame.new(0, 0.2, 0), Color3.fromRGB(120, 225, 80))
+	plotPart(m, Vector3.new(52, 0.4, 100), cf * CFrame.new(0, 0.2, 0), Color3.fromRGB(120, 225, 80), Enum.Material.SmoothPlastic)
 
-	-- Establo (corral con techo al fondo)
-	local penCenter = cf * CFrame.new(0, 0, -25)
-	local hw, hd = 26, 30
+	-- Establo chico (corral al fondo, granero detrás)
+	local penCenter = cf * CFrame.new(0, 0, -22)
+	local hw, hd = 19, 16
 	local c = penCenter.Position
 	fence(m, c + Vector3.new(-hw, 0, -hd), c + Vector3.new(hw, 0, -hd))
 	fence(m, c + Vector3.new(-hw, 0, -hd), c + Vector3.new(-hw, 0, hd))
 	fence(m, c + Vector3.new(hw, 0, -hd), c + Vector3.new(hw, 0, hd))
-	fence(m, c + Vector3.new(-hw, 0, hd), c + Vector3.new(-6, 0, hd))
-	fence(m, c + Vector3.new(6, 0, hd), c + Vector3.new(hw, 0, hd))
-	local barn = plotPart(m, Vector3.new(30, 14, 8), penCenter * CFrame.new(0, 7, -hd - 5), Color3.fromRGB(190, 50, 45), Enum.Material.WoodPlanks)
+	fence(m, c + Vector3.new(-hw, 0, hd), c + Vector3.new(-5, 0, hd))
+	fence(m, c + Vector3.new(5, 0, hd), c + Vector3.new(hw, 0, hd))
+	local barn = plotPart(m, Vector3.new(22, 11, 6), penCenter * CFrame.new(0, 5.5, -hd - 4), Color3.fromRGB(190, 50, 45), Enum.Material.WoodPlanks)
 	barn.Name = "Barn"
-	plotPart(m, Vector3.new(32, 2, 10), penCenter * CFrame.new(0, 15, -hd - 5), Color3.fromRGB(240, 240, 240))
+	plotPart(m, Vector3.new(24, 1.5, 8), penCenter * CFrame.new(0, 11.7, -hd - 4), Color3.fromRGB(240, 240, 240))
 
 	local board = Instance.new("BillboardGui")
 	board.Name = "OwnerSign"
 	board.Size = UDim2.fromOffset(260, 60)
-	board.StudsOffset = Vector3.new(0, 14, 0)
+	board.StudsOffset = Vector3.new(0, 10, 0)
 	board.Adornee = barn
 	local t = Instance.new("TextLabel")
 	t.Name = "Text"
 	t.Size = UDim2.fromScale(1, 1)
 	t.BackgroundTransparency = 1
-	t.Font = Enum.Font.FredokaOne
+	t.Font = Enum.Font.LuckiestGuy
 	t.TextScaled = true
 	t.TextColor3 = Color3.new(1, 1, 1)
 	t.TextStrokeTransparency = 0
@@ -165,26 +165,34 @@ local function buildPlot(i: number): Model
 	t.Parent = board
 	board.Parent = barn
 
-	-- Entrenador de disparo: diana + plataforma con prompt
-	local pad = plotPart(m, Vector3.new(14, 0.6, 14), cf * CFrame.new(0, 0.5, 45), Color3.fromRGB(255, 200, 60))
+	-- Entrenador de disparo justo afuera del establo, a un lado de la entrada
+	local pad = plotPart(m, Vector3.new(9, 0.6, 9), cf * CFrame.new(13, 0.5, 4), Color3.fromRGB(255, 200, 60), Enum.Material.SmoothPlastic)
 	pad.Name = "TrainerPad"
-	local target = plotPart(m, Vector3.new(1, 8, 8), cf * CFrame.new(0, 5, 62) * CFrame.Angles(0, math.rad(90), 0), Color3.fromRGB(255, 255, 255))
+	local target = Instance.new("Part")
+	target.Anchored = true
 	target.Shape = Enum.PartType.Cylinder
-	target.CFrame = cf * CFrame.new(0, 5, 62) * CFrame.Angles(0, math.rad(90), 0)
-	local bull = plotPart(m, Vector3.new(1.1, 3, 3), target.CFrame, Color3.fromRGB(230, 40, 40))
-	bull.Shape = Enum.PartType.Cylinder
+	target.Size = Vector3.new(1, 7, 7)
+	target.CFrame = cf * CFrame.new(13, 4.5, 16) * CFrame.Angles(0, math.rad(90), 0)
+	target.Color = Color3.new(1, 1, 1)
 	target.Name = "TrainerTarget"
+	target.Parent = m
+	local bull = target:Clone()
+	bull.Size = Vector3.new(1.1, 2.5, 2.5)
+	bull.Color = Color3.fromRGB(230, 40, 40)
+	bull.Name = "Bullseye"
+	bull.Parent = m
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "Train"
 	prompt.ActionText = "Train Power"
 	prompt.ObjectText = "Shooting Trainer"
 	prompt.HoldDuration = 0.4
-	prompt.MaxActivationDistance = 12
+	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = pad
 	local trainerSign = Instance.new("BillboardGui")
-	trainerSign.Size = UDim2.fromOffset(220, 40)
-	trainerSign.StudsOffset = Vector3.new(0, 8, 0)
+	trainerSign.Size = UDim2.fromOffset(200, 36)
+	trainerSign.StudsOffset = Vector3.new(0, 9, 0)
+	trainerSign.MaxDistance = 60
 	trainerSign.Adornee = pad
 	local tt = t:Clone()
 	tt.Text = "SHOOTING TRAINER"
@@ -192,7 +200,7 @@ local function buildPlot(i: number): Model
 	tt.Parent = trainerSign
 	trainerSign.Parent = pad
 
-	local spawnPart = plotPart(m, Vector3.new(8, 0.4, 8), cf * CFrame.new(0, 0.5, 20), Color3.fromRGB(80, 160, 255))
+	local spawnPart = plotPart(m, Vector3.new(7, 0.4, 7), cf * CFrame.new(-12, 0.5, 6), Color3.fromRGB(80, 160, 255), Enum.Material.SmoothPlastic)
 	spawnPart.Name = "Spawn"
 
 	local animals = Instance.new("Folder")
@@ -233,13 +241,14 @@ local function refreshStable(plr: Player)
 	end
 	local folder = plotModels[i].Animals
 	folder:ClearAllChildren()
-	local center = plotCFrames[i] * CFrame.new(0, 0.4, -25)
-	local cols = 6
+	local center = plotCFrames[i] * CFrame.new(0, 0.4, -22)
+	local cols = 8
 	for n, id in d.animals do
 		local col = (n - 1) % cols
 		local row = math.floor((n - 1) / cols)
-		local pos = center * CFrame.new(-20 + col * 8, 0, -24 + row * 7) * CFrame.Angles(0, math.rad(180), 0)
+		local pos = center * CFrame.new(-15.4 + col * 4.4, 0, -13.5 + row * 3.8) * CFrame.Angles(0, math.rad(180), 0)
 		local beast = Beasts.build(id, pos, true)
+		beast:ScaleTo(0.6)
 		beast:SetAttribute("Owner", plr.UserId)
 		beast.Parent = folder
 	end

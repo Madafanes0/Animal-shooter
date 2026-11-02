@@ -3,6 +3,8 @@ local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local MarketplaceService = game:GetService("MarketplaceService")
+local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Map = require(script.Parent.Map)
@@ -43,13 +45,14 @@ type Data = {
 	held: { number },
 	discovered: { [string]: boolean },
 	kills: number,
+	passes: { [string]: boolean },
+	luckUntil: number,
 }
 
 local data: { [Player]: Data } = {}
 local plotOf: { [Player]: number } = {}
 local plotModels: { [number]: Model } = {}
 local lastShot: { [Player]: number } = {}
-local lastTrain: { [Player]: number } = {}
 local rng = Random.new()
 local giveHeld: (Player) -> ()
 
@@ -65,15 +68,34 @@ local function defaultData(): Data
 		held = {},
 		discovered = {},
 		kills = 0,
+		passes = {},
+		luckUntil = 0,
 	}
 end
 
 local function income(d: Data): number
 	local total = 0
-	for _, id in d.animals do
-		total += Config.Animals[id].income
+	for _, entry in d.animals do
+		total += Config.entryIncome(entry)
 	end
-	return total
+	return total * (if d.passes.Money2 then 2 else 1)
+end
+
+local function heldMax(d: Data): number
+	return Config.HELD_MAX + (if d.passes.BigHands then 50 else 0)
+end
+
+-- Suerte total: arma exclusiva × pase 2x × poción 3x
+local function luckMult(d: Data): number
+	local w = Config.Weapons[d.equipped]
+	local luck = w.luck or 1
+	if d.passes.Luck2 then
+		luck *= 2
+	end
+	if d.luckUntil > os.time() then
+		luck *= 3
+	end
+	return luck
 end
 
 -- El cliente lee todo su estado de un atributo JSON
@@ -94,6 +116,10 @@ local function push(plr: Player)
 		discovered = d.discovered,
 		income = income(d),
 		kills = d.kills,
+		passes = d.passes,
+		luckLeft = math.max(0, d.luckUntil - os.time()),
+		luck = luckMult(d),
+		heldMax = heldMax(d),
 	}))
 	local ls = plr:FindFirstChild("leaderstats")
 	if ls then
@@ -154,15 +180,17 @@ local function buildPlot(i: number): Model
 	fence(m, c + Vector3.new(hw, 0, -hd), c + Vector3.new(hw, 0, hd))
 	fence(m, c + Vector3.new(-hw, 0, hd), c + Vector3.new(-5, 0, hd))
 	fence(m, c + Vector3.new(5, 0, hd), c + Vector3.new(hw, 0, hd))
-	local barn = plotPart(m, Vector3.new(26, 12, 6), penCenter * CFrame.new(0, 6, -hd - 4), Color3.fromRGB(190, 50, 45), Enum.Material.WoodPlanks)
-	barn.Name = "Barn"
-	plotPart(m, Vector3.new(28, 1.5, 8), penCenter * CFrame.new(0, 12.7, -hd - 4), Color3.fromRGB(240, 240, 240))
-
+	-- Letrero chico con el nombre del dueño junto a la entrada
+	local post = plotPart(m, Vector3.new(0.8, 6, 0.8), penCenter * CFrame.new(-9, 3, hd + 1), Color3.fromRGB(110, 65, 35), Enum.Material.Wood)
+	post.Name = "SignPole"
+	local signBoard = plotPart(m, Vector3.new(8, 2.4, 0.5), penCenter * CFrame.new(-9, 6.2, hd + 1), Color3.fromRGB(150, 90, 50), Enum.Material.Wood)
+	signBoard.Name = "SignPost"
 	local board = Instance.new("BillboardGui")
 	board.Name = "OwnerSign"
-	board.Size = UDim2.fromOffset(260, 60)
-	board.StudsOffset = Vector3.new(0, 10, 0)
-	board.Adornee = barn
+	board.Size = UDim2.fromOffset(150, 26)
+	board.StudsOffset = Vector3.new(0, 2.2, 0)
+	board.MaxDistance = 90
+	board.Adornee = signBoard
 	local t = Instance.new("TextLabel")
 	t.Name = "Text"
 	t.Size = UDim2.fromScale(1, 1)
@@ -173,7 +201,7 @@ local function buildPlot(i: number): Model
 	t.TextStrokeTransparency = 0
 	t.Text = "Empty Stable"
 	t.Parent = board
-	board.Parent = barn
+	board.Parent = signBoard
 
 	-- Campo de tiro afuera de la zona verde, frente al establo (piso de tierra propio)
 	local range = plotPart(m, Vector3.new(22, 0.3, 20), cf * CFrame.new(15, 0.15, 26), Color3.fromRGB(200, 160, 110), Enum.Material.SmoothPlastic)
@@ -196,21 +224,13 @@ local function buildPlot(i: number): Model
 	bull.Color = Color3.fromRGB(230, 40, 40)
 	bull.Name = "Bullseye"
 	bull.Parent = m
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = "Train"
-	prompt.ActionText = "Train Power"
-	prompt.ObjectText = "Shooting Trainer"
-	prompt.HoldDuration = 0.4
-	prompt.MaxActivationDistance = 10
-	prompt.RequiresLineOfSight = false
-	prompt.Parent = pad
 	local trainerSign = Instance.new("BillboardGui")
-	trainerSign.Size = UDim2.fromOffset(200, 36)
+	trainerSign.Size = UDim2.fromOffset(170, 28)
 	trainerSign.StudsOffset = Vector3.new(0, 9, 0)
 	trainerSign.MaxDistance = 60
 	trainerSign.Adornee = pad
 	local tt = t:Clone()
-	tt.Text = "SHOOTING TRAINER"
+	tt.Text = "STAND HERE TO TRAIN"
 	tt.TextColor3 = Color3.fromRGB(255, 220, 80)
 	tt.Parent = trainerSign
 	trainerSign.Parent = pad
@@ -225,21 +245,6 @@ local function buildPlot(i: number): Model
 	m:SetAttribute("Index", i)
 	m.Parent = plotsFolder
 
-	prompt.Triggered:Connect(function(plr)
-		if plotOf[plr] ~= i then
-			notify(plr, "This is not your trainer!")
-			return
-		end
-		local d = data[plr]
-		if not d or os.clock() - (lastTrain[plr] or 0) < 0.35 then
-			return
-		end
-		lastTrain[plr] = os.clock()
-		local gain = Config.trainerGain(d.trainerLevel)
-		d.power += gain
-		Notify:FireClient(plr, "+" .. gain .. " Power", Color3.fromRGB(255, 220, 80), "train")
-		push(plr)
-	end)
 	return m
 end
 
@@ -364,15 +369,18 @@ ShootFn.OnServerInvoke = function(plr: Player)
 	if not inShootZone(plr) then
 		return { err = "Go to the Shoot Zone!" }
 	end
-	if #d.held >= Config.HELD_MAX then
+	if #d.held >= heldMax(d) then
 		return { err = "Your hands are full! Place or sell animals." }
 	end
 	lastShot[plr] = os.clock()
 
 	local maxDist = Config.shotDistance(d.equipped, d.power)
 	local dist = maxDist * rng:NextNumber(0.8, 1)
-	local animal = Config.rollAnimal(dist, rng)
-	table.insert(d.held, animal.id)
+	local luck = luckMult(d)
+	local animal, chance = Config.rollAnimal(dist, rng, luck)
+	local variant, vChance = Config.rollVariant(rng, luck)
+	local entry = Config.entry(animal.id, variant)
+	table.insert(d.held, entry)
 	d.discovered[tostring(animal.id)] = true
 	d.kills += 1
 	push(plr)
@@ -381,7 +389,8 @@ ShootFn.OnServerInvoke = function(plr: Player)
 	local x = math.clamp(root.Position.X + rng:NextNumber(-10, 10), -Config.FIELD_WIDTH / 2 + 8, Config.FIELD_WIDTH / 2 - 8)
 	-- El animal llega a tu mano cuando termina la animación
 	task.delay(4, giveHeld, plr)
-	return { dist = dist, x = x, animal = animal.id, weapon = d.equipped }
+	-- "1 en N" para que el cliente sepa si toca la animación de criatura rara
+	return { dist = dist, x = x, animal = entry, weapon = d.equipped, oneIn = math.floor(1 / (chance * vChance)) }
 end
 
 ---------------------------------------------------------------- Acciones
@@ -398,7 +407,11 @@ function handlers.BuyWeapon(plr: Player, d: Data, index: any)
 		return
 	end
 	local key = tostring(w.index)
-	if d.owned[key] then
+	if w.exclusive and not d.passes[w.pass] then
+		notify(plr, "Get it in the Robux Shop!")
+		return
+	end
+	if d.owned[key] or w.exclusive then
 		d.equipped = w.index
 		notify(plr, "Equipped " .. w.name)
 		giveWeapon(plr)
@@ -463,7 +476,7 @@ function handlers.Place(plr: Player, d: Data, id: any)
 	end
 	local animalId = table.remove(d.held, pos) :: number
 	table.insert(d.animals, animalId)
-	notify(plr, "Placed " .. Config.Animals[animalId].name .. "!", Color3.fromRGB(90, 255, 90))
+	notify(plr, "Placed " .. Config.entryName(animalId) .. "!", Color3.fromRGB(90, 255, 90))
 	refreshStable(plr)
 	giveHeld(plr)
 end
@@ -472,7 +485,7 @@ end
 function handlers.PickUp(plr: Player, d: Data, slot: any)
 	slot = tonumber(slot)
 	local id = slot and d.animals[slot]
-	if not id or #d.held >= Config.HELD_MAX then
+	if not id or #d.held >= heldMax(d) then
 		return
 	end
 	table.remove(d.animals, slot)
@@ -488,9 +501,9 @@ function handlers.SellHeld(plr: Player, d: Data, slot: any)
 		return
 	end
 	table.remove(d.held, slot)
-	local value = Config.sellValue(Config.Animals[id])
+	local value = Config.sellValue(id)
 	d.money += value
-	notify(plr, "Sold " .. Config.Animals[id].name .. " for $" .. value, Color3.fromRGB(90, 255, 90))
+	notify(plr, "Sold " .. Config.entryName(id) .. " for $" .. value, Color3.fromRGB(90, 255, 90))
 	giveHeld(plr)
 end
 
@@ -501,10 +514,116 @@ function handlers.Sell(plr: Player, d: Data, slot: any)
 		return
 	end
 	table.remove(d.animals, slot)
-	local value = Config.sellValue(Config.Animals[id])
+	local value = Config.sellValue(id)
 	d.money += value
-	notify(plr, "Sold " .. Config.Animals[id].name .. " for $" .. value, Color3.fromRGB(90, 255, 90))
+	notify(plr, "Sold " .. Config.entryName(id) .. " for $" .. value, Color3.fromRGB(90, 255, 90))
 	refreshStable(plr)
+end
+
+---------------------------------------------------------------- Robux
+
+local function findShopItem(key: string)
+	for _, item in Config.Passes do
+		if item.key == key then
+			return item, true
+		end
+	end
+	for _, item in Config.Products do
+		if item.key == key then
+			return item, false
+		end
+	end
+	return nil, false
+end
+
+local function grantPass(plr: Player, key: string)
+	local d = data[plr]
+	if not d or d.passes[key] then
+		return
+	end
+	d.passes[key] = true
+	local item = findShopItem(key)
+	notify(plr, "Thanks! " .. (if item then item.name else key) .. " unlocked!", Color3.fromRGB(255, 220, 80))
+	-- Las armas exclusivas se equipan al comprarlas
+	for _, w in Config.EXCLUSIVE_WEAPONS do
+		if w.pass == key then
+			d.owned[tostring(w.index)] = true
+			d.equipped = w.index
+			giveWeapon(plr)
+		end
+	end
+	push(plr)
+end
+
+local function grantProduct(plr: Player, key: string): boolean
+	local d = data[plr]
+	if not d then
+		return false
+	end
+	if key == "Luck15" then
+		d.luckUntil = math.max(d.luckUntil, os.time()) + Config.LUCK_BOOST_MINUTES * 60
+		notify(plr, "3x Luck active!", Color3.fromRGB(120, 255, 160))
+	elseif key == "Cash" then
+		local amount = math.max(5000, income(d) * 600)
+		d.money += amount
+		notify(plr, "+$" .. amount .. "!", Color3.fromRGB(90, 255, 90))
+	else
+		return false
+	end
+	push(plr)
+	return true
+end
+
+-- Sin ID todavía: en Studio se regala para probar; en el juego publicado avisa
+function handlers.TestBuy(plr: Player, d: Data, key: any)
+	local item, isPass = findShopItem(tostring(key))
+	if not item or item.id ~= 0 then
+		return
+	end
+	if not RunService:IsStudio() then
+		notify(plr, "Coming soon!")
+		return
+	end
+	if isPass then
+		grantPass(plr, item.key)
+	else
+		grantProduct(plr, item.key)
+	end
+end
+
+MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(plr, passId, bought)
+	if not bought then
+		return
+	end
+	for _, item in Config.Passes do
+		if item.id == passId then
+			grantPass(plr, item.key)
+		end
+	end
+end)
+
+MarketplaceService.ProcessReceipt = function(info)
+	local plr = Players:GetPlayerByUserId(info.PlayerId)
+	if not plr then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	for _, item in Config.Products do
+		if item.id == info.ProductId and grantProduct(plr, item.key) then
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
+	end
+	return Enum.ProductPurchaseDecision.NotProcessedYet
+end
+
+local function checkPasses(plr: Player)
+	for _, item in Config.Passes do
+		if item.id ~= 0 then
+			local ok, owns = pcall(MarketplaceService.UserOwnsGamePassAsync, MarketplaceService, plr.UserId, item.id)
+			if ok and owns then
+				grantPass(plr, item.key)
+			end
+		end
+	end
 end
 
 Action.OnServerEvent:Connect(function(plr, kind, arg)
@@ -567,10 +686,11 @@ Players.PlayerAdded:Connect(function(plr)
 	local i = plotOf[plr]
 	if i then
 		plr:SetAttribute("Plot", i)
-		plotModels[i].Barn.OwnerSign.Text.Text = plr.DisplayName .. "'s Stable"
+		plotModels[i].SignPost.OwnerSign.Text.Text = plr.DisplayName .. "'s Stable"
 	end
 	push(plr)
 	refreshStable(plr)
+	task.spawn(checkPasses, plr)
 
 	plr.CharacterAdded:Connect(function(char)
 		char:WaitForChild("HumanoidRootPart")
@@ -591,17 +711,44 @@ Players.PlayerRemoving:Connect(function(plr)
 	local i = plotOf[plr]
 	if i then
 		plotModels[i].Animals:ClearAllChildren()
-		plotModels[i].Barn.OwnerSign.Text.Text = "Empty Stable"
+		plotModels[i].SignPost.OwnerSign.Text.Text = "Empty Stable"
 	end
 	data[plr] = nil
 	plotOf[plr] = nil
 	lastShot[plr] = nil
-	lastTrain[plr] = nil
 end)
 
 game:BindToClose(function()
 	for _, plr in Players:GetPlayers() do
 		save(plr)
+	end
+end)
+
+-- Entrenador: si estás parado en tu campo de tiro, sube el poder solo
+local function onTrainer(plr: Player): boolean
+	local i = plotOf[plr]
+	local char = plr.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not i or not root then
+		return false
+	end
+	local p = plotCFrames[i]:PointToObjectSpace(root.Position)
+	return p.X > 4 and p.X < 26 and p.Z > 16 and p.Z < 36
+end
+
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		for plr, d in data do
+			local on = onTrainer(plr)
+			if on then
+				d.power += Config.trainerGain(d.trainerLevel)
+				push(plr)
+			end
+			if plr:GetAttribute("Training") ~= on then
+				plr:SetAttribute("Training", on)
+			end
+		end
 	end
 end)
 

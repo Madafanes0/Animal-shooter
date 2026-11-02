@@ -110,6 +110,71 @@ for i, name in weaponNames do
 	}
 end
 
+-- Armas exclusivas (pase de Robux): llegan lejos y dan suerte extra. `base` = modelo que usan (pintado).
+C.EXCLUSIVE_WEAPONS = {
+	{ name = "Ruby Crossbow", base = 16, range = 7 * C.ZONE_LEN + 90, luck = 1.5, color = Color3.fromRGB(255, 40, 80), pass = "W21" },
+	{ name = "Thunder Railgun", base = 18, range = 13 * C.ZONE_LEN + 90, luck = 2, color = Color3.fromRGB(255, 230, 40), pass = "W22" },
+	{ name = "Dragon Cannon", base = 20, range = C.MAX_DIST, luck = 3, color = Color3.fromRGB(255, 120, 20), pass = "W23" },
+}
+for k, w in C.EXCLUSIVE_WEAPONS do
+	local index = 20 + k
+	w.index = index
+	w.exclusive = true
+	w.price = 0
+	C.Weapons[index] = w
+end
+
+-- Variantes: salen al azar al cazar y multiplican el ingreso
+C.Variants = {
+	[0] = { name = "", mult = 1, chance = 1 },
+	{ name = "Golden", mult = 2, chance = 1 / 25, color = Color3.fromRGB(255, 200, 40) },
+	{ name = "Diamond", mult = 5, chance = 1 / 150, color = Color3.fromRGB(130, 230, 255) },
+	{ name = "Rainbow", mult = 12, chance = 1 / 1000, color = Color3.fromRGB(255, 90, 220) },
+}
+
+-- Un animal guardado es un número: variante * 1000 + id
+function C.entry(id: number, variant: number): number
+	return variant * 1000 + id
+end
+function C.decode(entry: number)
+	local variant = math.floor(entry / 1000)
+	return C.Animals[entry % 1000], variant
+end
+function C.entryName(entry: number): string
+	local a, v = C.decode(entry)
+	return if v > 0 then C.Variants[v].name .. " " .. a.name else a.name
+end
+function C.entryIncome(entry: number): number
+	local a, v = C.decode(entry)
+	return a.income * C.Variants[v].mult
+end
+
+-- Devuelve la variante (la más rara primero) y su probabilidad
+function C.rollVariant(rng: Random, luckMult: number)
+	for v = #C.Variants, 1, -1 do
+		local chance = math.min(C.Variants[v].chance * luckMult, 0.5)
+		if rng:NextNumber() < chance then
+			return v, chance
+		end
+	end
+	return 0, 1
+end
+
+-- Tienda de Robux. Pon el ID real del pase/producto (Creator Dashboard); con 0 sólo se puede probar en Studio.
+C.Passes = {
+	{ key = "Luck2", name = "2x Luck", desc = "Double luck on every shot", price = 199, id = 0, color = Color3.fromRGB(80, 220, 120) },
+	{ key = "Money2", name = "2x Money", desc = "Your stable earns double", price = 149, id = 0, color = Color3.fromRGB(90, 255, 90) },
+	{ key = "BigHands", name = "+50 Hand Slots", desc = "Carry 75 animals at once", price = 79, id = 0, color = Color3.fromRGB(255, 180, 60) },
+	{ key = "W21", name = "Ruby Crossbow", desc = "Exclusive · 1.5x luck · Epoch 8", price = 249, id = 0, color = C.EXCLUSIVE_WEAPONS[1].color },
+	{ key = "W22", name = "Thunder Railgun", desc = "Exclusive · 2x luck · Epoch 14", price = 599, id = 0, color = C.EXCLUSIVE_WEAPONS[2].color },
+	{ key = "W23", name = "Dragon Cannon", desc = "Exclusive · 3x luck · Max reach", price = 1499, id = 0, color = C.EXCLUSIVE_WEAPONS[3].color },
+}
+C.Products = {
+	{ key = "Luck15", name = "3x Luck · 15 min", desc = "Stacks with 2x Luck", price = 49, id = 0, color = Color3.fromRGB(120, 255, 160) },
+	{ key = "Cash", name = "Cash Pack", desc = "10 minutes of income (min $5K)", price = 99, id = 0, color = Color3.fromRGB(90, 255, 90) },
+}
+C.LUCK_BOOST_MINUTES = 15
+
 -- Establo y entrenador
 C.STABLE_BASE = 10
 C.STABLE_PER_LEVEL = 5
@@ -144,9 +209,10 @@ function C.luckAt(dist: number): number
 	return 1 + within * 2 + dist / 800
 end
 
-function C.rollAnimal(dist: number, rng: Random)
+-- Devuelve el animal y la probabilidad de su rareza
+function C.rollAnimal(dist: number, rng: Random, luckMult: number?)
 	local epoch = C.Epochs[C.epochAt(dist)]
-	local luck = C.luckAt(dist)
+	local luck = C.luckAt(dist) * (luckMult or 1)
 	local total = 0
 	local weights = {}
 	for r, rar in C.Rarities do
@@ -158,14 +224,14 @@ function C.rollAnimal(dist: number, rng: Random)
 	for r = 1, #weights do
 		roll -= weights[r]
 		if roll <= 0 then
-			return epoch.animals[r]
+			return epoch.animals[r], weights[r] / total
 		end
 	end
-	return epoch.animals[1]
+	return epoch.animals[1], weights[1] / total
 end
 
-function C.sellValue(animal): number
-	return animal.income * 25
+function C.sellValue(entry: number): number
+	return C.entryIncome(entry) * 25
 end
 
 return C

@@ -29,7 +29,7 @@ local function add(model: Model, handle: BasePart?, size: Vector3, offset: CFram
 		w.Part1 = p
 		w.Parent = p
 	else
-		p.Name = "Handle"
+		p.Name = "Grip"
 		p.CFrame = offset
 	end
 	p.Parent = model

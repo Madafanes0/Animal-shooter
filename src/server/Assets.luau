@@ -26,6 +26,44 @@ local function weaponLength(i: number): number
 	return 5.2
 end
 
+-- Caja alineada a los ejes del mundo que envuelve todas las partes (las mallas importadas pueden venir rotadas)
+local function worldBounds(m: Model): (Vector3, Vector3)
+	local lo = Vector3.new(math.huge, math.huge, math.huge)
+	local hi = -lo
+	for _, p in m:GetDescendants() do
+		if p:IsA("BasePart") then
+			local h = p.Size / 2
+			for _, sx in { -1, 1 } do
+				for _, sy in { -1, 1 } do
+					for _, sz in { -1, 1 } do
+						local c = p.CFrame:PointToWorldSpace(Vector3.new(h.X * sx, h.Y * sy, h.Z * sz))
+						lo = lo:Min(c)
+						hi = hi:Max(c)
+					end
+				end
+			end
+		end
+	end
+	return (lo + hi) / 2, hi - lo
+end
+
+-- Pone una parte invisible "Root" sin rotación como PrimaryPart; el pivote queda en `pivotOffset` desde el centro
+local function setRoot(m: Model, pivotOffset: (Vector3) -> Vector3)
+	local center, size = worldBounds(m)
+	local root = Instance.new("Part")
+	root.Name = "Root"
+	root.Size = size
+	root.CFrame = CFrame.new(center)
+	root.Transparency = 1
+	root.Anchored = true
+	root.CanCollide = false
+	root.CanQuery = false
+	root.CanTouch = false
+	root.Parent = m
+	root.PivotOffset = CFrame.new(pivotOffset(size))
+	m.PrimaryPart = root
+end
+
 -- Saca las partes del asset y las mete en un Model limpio
 local function load(id: number, name: string): Model?
 	local ok, asset = pcall(InsertService.LoadAsset, InsertService, id)
@@ -44,8 +82,7 @@ local function load(id: number, name: string): Model?
 		end
 	end
 	asset:Destroy()
-	m.PrimaryPart = m:FindFirstChildWhichIsA("BasePart")
-	return if m.PrimaryPart then m else nil
+	return if m:FindFirstChildWhichIsA("BasePart") then m else nil
 end
 
 function Assets.start(onDone: () -> ())
@@ -84,10 +121,12 @@ function Assets.start(onDone: () -> ())
 				finished()
 				return
 			end
-			local cf, size = m:GetBoundingBox()
+			local _, size = worldBounds(m)
 			m:ScaleTo(4.2 * Config.Rarities[a.rarity].scale / math.max(size.X, size.Y, size.Z))
-			cf, size = m:GetBoundingBox()
-			m.WorldPivot = CFrame.new(cf.Position - Vector3.new(0, size.Y / 2, 0))
+			-- Pivote en los pies, al centro
+			setRoot(m, function(s)
+				return Vector3.new(0, -s.Y / 2, 0)
+			end)
 			m.Parent = animals
 			finished()
 		end)
@@ -100,12 +139,12 @@ function Assets.start(onDone: () -> ())
 				finished()
 				return
 			end
-			local _, size = m:GetBoundingBox()
+			local _, size = worldBounds(m)
 			m:ScaleTo(weaponLength(index) / math.max(size.X, size.Y, size.Z))
-			local cf
-			cf, size = m:GetBoundingBox()
 			local g = GRIPS[index]
-			m.WorldPivot = CFrame.new(cf.Position + Vector3.new(g[1] * size.X, g[2] * size.Y, g[3] * size.Z))
+			setRoot(m, function(s)
+				return Vector3.new(g[1] * s.X, g[2] * s.Y, g[3] * s.Z)
+			end)
 			m.Parent = weapons
 			finished()
 		end)

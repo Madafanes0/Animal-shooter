@@ -113,8 +113,8 @@ function Map.build(): { CFrame }
 	local grass = Color3.fromRGB(95, 210, 60)
 
 	-- Zona de bases (todo cerrado con muro a cuadros, abierto sólo hacia la línea de tiro)
-	local baseHalf = 186
-	local back, front = -132, -10
+	local baseHalf = 222
+	local back, front = -172, -10
 	floor(Vector3.new(baseHalf * 2, 2, front - back), Vector3.new(0, -1, (back + front) / 2), grass)
 	checkerWall(Vector3.new(-baseHalf, 0, back), Vector3.new(-baseHalf, 0, front), 40)
 	checkerWall(Vector3.new(baseHalf, 0, back), Vector3.new(baseHalf, 0, front), 40)
@@ -149,38 +149,44 @@ function Map.build(): { CFrame }
 	local endZ = Config.FIELD_START + Config.NUM_EPOCHS * Config.ZONE_LEN
 	block(Vector3.new(Config.FIELD_WIDTH + 8, 60, 4), Vector3.new(0, 30, endZ + 2), Color3.fromRGB(30, 10, 50))
 
-	-- Tienda de armas: puesto con toldo entre las bases y la línea de tiro
-	local shop = Instance.new("Model")
-	shop.Name = "WeaponShop"
-	shop.Parent = folder
-	local shopCF = CFrame.new(0, 0, -32)
-	local counter = block(Vector3.new(20, 3.5, 4), (shopCF * CFrame.new(0, 1.75, 0)).Position, Color3.fromRGB(150, 90, 50), shop, Enum.Material.WoodPlanks)
-	block(Vector3.new(21, 0.4, 5), (shopCF * CFrame.new(0, 3.7, 0)).Position, Color3.fromRGB(110, 65, 35), shop, Enum.Material.Wood)
-	for _, x in { -9.5, 9.5 } do
-		block(Vector3.new(1, 12, 1), (shopCF * CFrame.new(x, 6, 1.5)).Position, Color3.fromRGB(110, 65, 35), shop, Enum.Material.Wood)
+	-- Tiendas junto a la línea de tiro: armas a la izquierda, Robux a la derecha
+	local function stall(name: string, cf: CFrame, title: string, stripeA: Color3, stripeB: Color3, titleColor: Color3, promptText: string): Model
+		local shop = Instance.new("Model")
+		shop.Name = name
+		shop.Parent = folder
+		local counter = block(Vector3.new(20, 3.5, 4), (cf * CFrame.new(0, 1.75, 0)).Position, Color3.fromRGB(150, 90, 50), shop, Enum.Material.WoodPlanks)
+		block(Vector3.new(21, 0.4, 5), (cf * CFrame.new(0, 3.7, 0)).Position, Color3.fromRGB(110, 65, 35), shop, Enum.Material.Wood)
+		for _, x in { -9.5, 9.5 } do
+			block(Vector3.new(1, 12, 1), (cf * CFrame.new(x, 6, 1.5)).Position, Color3.fromRGB(110, 65, 35), shop, Enum.Material.Wood)
+		end
+		for i = 0, 6 do
+			local part = block(Vector3.new(3, 0.5, 8), (cf * CFrame.new(-9 + i * 3, 12, -0.5)).Position, if i % 2 == 0 then stripeA else stripeB, shop, Enum.Material.Fabric)
+			part.CFrame *= CFrame.Angles(math.rad(-12), 0, 0)
+		end
+		local board = sign(title, (cf * CFrame.new(0, 14.5, 1.5)).Position, titleColor, shop)
+		board.Size = Vector3.new(18, 4, 1)
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = name
+		prompt.ActionText = promptText
+		prompt.ObjectText = title
+		prompt.MaxActivationDistance = 14
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = counter
+		return shop
 	end
-	for i = 0, 6 do
-		local stripe = if i % 2 == 0 then Color3.fromRGB(230, 50, 50) else Color3.new(1, 1, 1)
-		local part = block(Vector3.new(3, 0.5, 8), (shopCF * CFrame.new(-9 + i * 3, 12, -0.5)).Position, stripe, shop, Enum.Material.Fabric)
-		part.CFrame *= CFrame.Angles(math.rad(-12), 0, 0)
-	end
-	local shopSign = sign("WEAPON SHOP", (shopCF * CFrame.new(0, 14.5, 1.5)).Position, Color3.fromRGB(255, 220, 80), shop)
-	shopSign.Size = Vector3.new(18, 4, 1)
-	shopDisplayCF = shopCF
+	shopDisplayCF = CFrame.new(-82, 0, -24)
+	stall("WeaponShop", shopDisplayCF, "WEAPON SHOP", Color3.fromRGB(230, 50, 50), Color3.new(1, 1, 1), Color3.fromRGB(255, 220, 80), "Open Shop")
 	Map.refreshShop()
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = "WeaponShop"
-	prompt.ActionText = "Open Shop"
-	prompt.ObjectText = "Weapons"
-	prompt.MaxActivationDistance = 14
-	prompt.RequiresLineOfSight = false
-	prompt.Parent = counter
+	local robux = stall("RobuxShop", CFrame.new(82, 0, -24), "ROBUX SHOP", Color3.fromRGB(40, 200, 90), Color3.fromRGB(255, 210, 50), Color3.fromRGB(120, 255, 140), "Open Robux Shop")
+	-- Cofre dorado de adorno sobre el mostrador
+	block(Vector3.new(4, 2.4, 2.6), Vector3.new(82, 5.1, -24), Color3.fromRGB(255, 200, 40), robux, Enum.Material.Foil)
+	block(Vector3.new(4.2, 0.5, 2.8), Vector3.new(82, 6.4, -24), Color3.fromRGB(200, 120, 20), robux, Enum.Material.Metal)
 
 	-- Parcelas (bases): 6 en fila
 	local plotCFrames = {}
 	for i = 1, Config.PLOTS do
-		local x = -150 + (i - 1) * 60
-		plotCFrames[i] = CFrame.new(x, 0, -78)
+		local x = -175 + (i - 1) * 70
+		plotCFrames[i] = CFrame.new(x, 0, -112)
 	end
 	return plotCFrames
 end

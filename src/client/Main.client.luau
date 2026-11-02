@@ -4,6 +4,8 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
+local MarketplaceService = game:GetService("MarketplaceService")
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
@@ -82,8 +84,8 @@ end
 -- Botones laterales (como Shop / Index de Steal an Egg)
 local side = Instance.new("Frame")
 side.BackgroundTransparency = 1
-side.Size = UDim2.fromOffset(130, 170)
-side.Position = UDim2.new(0, 8, 0.5, -85)
+side.Size = UDim2.fromOffset(130, 228)
+side.Position = UDim2.new(0, 8, 0.5, -114)
 side.Parent = gui
 local list = Instance.new("UIListLayout")
 list.Padding = UDim.new(0, 8)
@@ -91,6 +93,7 @@ list.Parent = side
 local shopBtn = button(side, "Shop", Color3.fromRGB(60, 200, 50), UDim2.new(1, 0, 0, 48), UDim2.new())
 local stableBtn = button(side, "Stable", Color3.fromRGB(230, 140, 40), UDim2.new(1, 0, 0, 48), UDim2.new())
 local indexBtn = button(side, "Index", Color3.fromRGB(40, 170, 230), UDim2.new(1, 0, 0, 48), UDim2.new())
+local robuxBtn = button(side, "Robux", Color3.fromRGB(255, 190, 30), UDim2.new(1, 0, 0, 48), UDim2.new())
 
 -- Dinero y poder abajo a la izquierda
 local stats = Instance.new("Frame")
@@ -205,6 +208,9 @@ local function renderShop()
 	setHeader(0)
 	grid.CellSize = UDim2.new(0.5, -4, 0, 96)
 	for i, w in Config.Weapons do
+		if w.exclusive and not state.owned[tostring(i)] then
+			continue
+		end
 		local owned = state.owned[tostring(i)]
 		local f = card(i, if owned then Color3.fromRGB(60, 90, 60) else Color3.fromRGB(70, 70, 90))
 		local sw = Instance.new("Frame")
@@ -218,7 +224,7 @@ local function renderShop()
 		text(f, {
 			Size = UDim2.new(1, -130, 0, 22),
 			Position = UDim2.fromOffset(26, 42),
-			Text = "Reach: Epoch " .. Config.epochAt(w.range) .. " (" .. w.range .. " studs)",
+			Text = "Reach: Epoch " .. Config.epochAt(w.range) .. (if w.luck then " · " .. w.luck .. "x luck" else ""),
 			TextColor3 = Color3.fromRGB(200, 220, 255),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			ZIndex = 8,
@@ -256,28 +262,28 @@ local function renderStable()
 	grid.CellSize = UDim2.new(0.333, -6, 0, 110)
 	-- Primero los que traes en la mano, luego los colocados
 	for slot, id in state.held do
-		local a = Config.Animals[id]
+		local a, v = Config.decode(id)
 		local rar = Config.Rarities[a.rarity]
 		local f = card(slot, Color3.fromRGB(80, 70, 50))
-		stroke(f, rar.color, 3)
+		stroke(f, if v > 0 then Config.Variants[v].color else rar.color, 3)
 		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 4), Text = "IN HAND · " .. rar.name, TextColor3 = rar.color, ZIndex = 8 })
-		text(f, { Size = UDim2.new(1, -10, 0, 22), Position = UDim2.fromOffset(5, 22), Text = a.name, ZIndex = 8 })
-		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 46), Text = "$" .. fmt(a.income) .. "/s", TextColor3 = Color3.fromRGB(90, 255, 90), ZIndex = 8 })
-		local b = button(f, "Sell $" .. fmt(Config.sellValue(a)), Color3.fromRGB(200, 60, 60), UDim2.new(1, -16, 0, 30), UDim2.new(0, 8, 1, -36))
+		text(f, { Size = UDim2.new(1, -10, 0, 22), Position = UDim2.fromOffset(5, 22), Text = Config.entryName(id), TextColor3 = if v > 0 then Config.Variants[v].color else Color3.new(1, 1, 1), ZIndex = 8 })
+		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 46), Text = "$" .. fmt(Config.entryIncome(id)) .. "/s", TextColor3 = Color3.fromRGB(90, 255, 90), ZIndex = 8 })
+		local b = button(f, "Sell $" .. fmt(Config.sellValue(id)), Color3.fromRGB(200, 60, 60), UDim2.new(1, -16, 0, 30), UDim2.new(0, 8, 1, -36))
 		b.ZIndex = 8
 		b.Activated:Connect(function()
 			action("SellHeld", slot)
 		end)
 	end
 	for slot, id in state.animals do
-		local a = Config.Animals[id]
+		local a, v = Config.decode(id)
 		local rar = Config.Rarities[a.rarity]
 		local f = card(100 + slot, Color3.fromRGB(60, 60, 80))
-		stroke(f, rar.color, 3)
+		stroke(f, if v > 0 then Config.Variants[v].color else rar.color, 3)
 		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 4), Text = rar.name, TextColor3 = rar.color, ZIndex = 8 })
-		text(f, { Size = UDim2.new(1, -10, 0, 22), Position = UDim2.fromOffset(5, 22), Text = a.name, ZIndex = 8 })
-		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 46), Text = "$" .. fmt(a.income) .. "/s", TextColor3 = Color3.fromRGB(90, 255, 90), ZIndex = 8 })
-		local b = button(f, "Sell $" .. fmt(Config.sellValue(a)), Color3.fromRGB(200, 60, 60), UDim2.new(0.5, -10, 0, 30), UDim2.new(0, 8, 1, -36))
+		text(f, { Size = UDim2.new(1, -10, 0, 22), Position = UDim2.fromOffset(5, 22), Text = Config.entryName(id), TextColor3 = if v > 0 then Config.Variants[v].color else Color3.new(1, 1, 1), ZIndex = 8 })
+		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 46), Text = "$" .. fmt(Config.entryIncome(id)) .. "/s", TextColor3 = Color3.fromRGB(90, 255, 90), ZIndex = 8 })
+		local b = button(f, "Sell $" .. fmt(Config.sellValue(id)), Color3.fromRGB(200, 60, 60), UDim2.new(0.5, -10, 0, 30), UDim2.new(0, 8, 1, -36))
 		b.ZIndex = 8
 		b.Activated:Connect(function()
 			action("Sell", slot)
@@ -310,6 +316,39 @@ local function renderIndex()
 	end
 end
 
+local function renderRobux()
+	panelTitle.Text = "Robux Shop"
+	setHeader(0)
+	grid.CellSize = UDim2.new(0.5, -4, 0, 96)
+	local function item(order: number, it, isPass: boolean)
+		local owned = isPass and state.passes[it.key]
+		local f = card(order, if owned then Color3.fromRGB(60, 90, 60) else Color3.fromRGB(70, 60, 95))
+		stroke(f, it.color, 3)
+		text(f, { Size = UDim2.new(1, -130, 0, 30), Position = UDim2.fromOffset(12, 8), Text = it.name, TextColor3 = it.color, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 8 })
+		text(f, { Size = UDim2.new(1, -130, 0, 36), Position = UDim2.fromOffset(12, 44), Text = it.desc, TextColor3 = Color3.fromRGB(220, 220, 240), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, ZIndex = 8 })
+		local b = button(f, if owned then "Owned" else "R$ " .. it.price, if owned then Color3.fromRGB(120, 120, 120) else Color3.fromRGB(60, 200, 50), UDim2.fromOffset(96, 44), UDim2.new(1, -104, 0.5, -22))
+		b.ZIndex = 8
+		b.Activated:Connect(function()
+			if owned then
+				return
+			end
+			if it.id == 0 then
+				action("TestBuy", it.key) -- sin ID: gratis en Studio
+			elseif isPass then
+				MarketplaceService:PromptGamePassPurchase(player, it.id)
+			else
+				MarketplaceService:PromptProductPurchase(player, it.id)
+			end
+		end)
+	end
+	for n, it in Config.Passes do
+		item(n, it, true)
+	end
+	for n, it in Config.Products do
+		item(100 + n, it, false)
+	end
+end
+
 renderPanel = function()
 	if not currentPanel or not state then
 		panel.Visible = false
@@ -321,6 +360,8 @@ renderPanel = function()
 		renderShop()
 	elseif currentPanel == "Stable" then
 		renderStable()
+	elseif currentPanel == "Robux" then
+		renderRobux()
 	else
 		renderIndex()
 	end
@@ -339,6 +380,9 @@ end)
 indexBtn.Activated:Connect(function()
 	toggle("Index")
 end)
+robuxBtn.Activated:Connect(function()
+	toggle("Robux")
+end)
 closeBtn.Activated:Connect(function()
 	currentPanel = nil
 	renderPanel()
@@ -350,20 +394,37 @@ end)
 ---------------------------------------------------------------- Estado
 
 local lastPanelKey = ""
+local lastPower: number? = nil
+
+-- "+N" que sube junto al poder mientras entrenas
+local function powerPop(gain: number)
+	local t = text(stats, { Size = UDim2.fromOffset(120, 28), Position = UDim2.new(0, 150, 0, -6), Text = "+" .. fmt(gain), TextColor3 = Color3.fromRGB(255, 220, 80), ZIndex = 5 })
+	TweenService:Create(t, TweenInfo.new(0.8), { Position = UDim2.new(0, 150, 0, -40), TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	task.delay(0.85, t.Destroy, t)
+end
+
 local function onState()
 	local raw = player:GetAttribute("State")
 	if not raw then
 		return
 	end
 	state = HttpService:JSONDecode(raw)
+	if lastPower and state.power > lastPower then
+		powerPop(state.power - lastPower)
+	end
+	lastPower = state.power
 	moneyLabel.Text = "$" .. fmt(state.money)
 	incomeLabel.Text = "+$" .. fmt(state.income) .. "/s"
 	powerLabel.Text = "Power " .. fmt(state.power) .. "  (+" .. Config.trainerGain(state.trainerLevel) .. "/train)"
 	local w = Config.Weapons[state.equipped]
 	local reach = Config.shotDistance(state.equipped, state.power)
-	info.Text = w.name .. "\nReach: Epoch " .. Config.epochAt(reach) .. " · Stable " .. #state.animals .. "/" .. Config.stableCapacity(state.stableLevel)
+	local luckText = if state.luck > 1 then " · Luck x" .. state.luck else ""
+	if state.luckLeft > 0 then
+		luckText ..= string.format(" (%d:%02d)", state.luckLeft // 60, state.luckLeft % 60)
+	end
+	info.Text = w.name .. luckText .. "\nReach: Epoch " .. Config.epochAt(reach) .. " · Stable " .. #state.animals .. "/" .. Config.stableCapacity(state.stableLevel)
 	-- El dinero sube cada segundo; sólo redibuja el panel si cambió algo más
-	local key = HttpService:JSONEncode({ state.owned, state.equipped, state.animals, state.held, state.stableLevel, state.trainerLevel, state.discovered, currentPanel == "Shop" and math.floor(state.money) or 0 })
+	local key = HttpService:JSONEncode({ state.owned, state.equipped, state.animals, state.held, state.passes, state.stableLevel, state.trainerLevel, state.discovered, currentPanel == "Shop" and math.floor(state.money) or 0 })
 	if key ~= lastPanelKey then
 		lastPanelKey = key
 		renderPanel()
@@ -388,16 +449,18 @@ local function inShootZone(): boolean
 	return math.abs(p.X) <= Config.FIELD_WIDTH / 2 and p.Z > -16 and p.Z < 16
 end
 
-local function banner(a, rar)
+local function banner(a, rar, variant: number)
 	local f = Instance.new("Frame")
 	f.Size = UDim2.new(0.7, 0, 0, 110)
 	f.Position = UDim2.new(0.15, 0, 0.12, 0)
 	f.BackgroundTransparency = 1
 	f.ZIndex = 30
 	f.Parent = gui
-	text(f, { Size = UDim2.new(1, 0, 0.35, 0), Text = rar.name:upper(), TextColor3 = rar.color, ZIndex = 30 })
-	text(f, { Size = UDim2.new(1, 0, 0.4, 0), Position = UDim2.fromScale(0, 0.35), Text = "You hunted a " .. a.name .. "!", ZIndex = 30 })
-	text(f, { Size = UDim2.new(1, 0, 0.25, 0), Position = UDim2.fromScale(0, 0.75), Text = "+$" .. fmt(a.income) .. "/s", TextColor3 = Color3.fromRGB(90, 255, 90), ZIndex = 30 })
+	local entry = Config.entry(a.id, variant)
+	local top = if variant > 0 then Config.Variants[variant].name:upper() .. " · " .. rar.name:upper() else rar.name:upper()
+	text(f, { Size = UDim2.new(1, 0, 0.35, 0), Text = top, TextColor3 = if variant > 0 then Config.Variants[variant].color else rar.color, ZIndex = 30 })
+	text(f, { Size = UDim2.new(1, 0, 0.4, 0), Position = UDim2.fromScale(0, 0.35), Text = "You hunted a " .. Config.entryName(entry) .. "!", ZIndex = 30 })
+	text(f, { Size = UDim2.new(1, 0, 0.25, 0), Position = UDim2.fromScale(0, 0.75), Text = "+$" .. fmt(Config.entryIncome(entry)) .. "/s", TextColor3 = Color3.fromRGB(90, 255, 90), ZIndex = 30 })
 	local scale = Instance.new("UIScale")
 	scale.Scale = 0.2
 	scale.Parent = f
@@ -521,8 +584,10 @@ local function playShot(res)
 	if not r or not char then
 		return
 	end
-	local a = Config.Animals[res.animal]
+	local a, variant = Config.decode(res.animal)
 	local rar = Config.Rarities[a.rarity]
+	local displayColor = if variant > 0 then Config.Variants[variant].color else rar.color
+	local legendaryWalk = (res.oneIn or 0) >= 1000
 	local weapon = Config.Weapons[res.weapon]
 	local humanoid = char:FindFirstChildOfClass("Humanoid")
 	local oldSpeed = humanoid and humanoid.WalkSpeed or 16
@@ -596,8 +661,53 @@ local function playShot(res)
 	trail.Lifetime = 0.5
 	trail.Parent = rock
 
-	camera.FieldOfView = 85
 	local beast: Model? = nil
+	-- Más raro que 1 en 1000: la criatura aparece caminando antes de que llegue la bala
+	if legendaryWalk then
+		rock.Transparency = 1
+		local stand = CFrame.new(landPos.X, 0, landPos.Z + 3)
+		local walkFrom = stand * CFrame.new(-28, 0, 0)
+		local b = Models.animal(res.animal, walkFrom * CFrame.Angles(0, math.rad(-90), 0), false)
+		b.Parent = workspace
+		beast = b
+		local full = b:GetScale()
+		flash.BackgroundColor3 = displayColor
+		flash.BackgroundTransparency = 0.2
+		TweenService:Create(flash, TweenInfo.new(0.6), { BackgroundTransparency = 1 }):Play()
+		local title = text(fx, {
+			Size = UDim2.fromScale(0.8, 0.1),
+			Position = UDim2.fromScale(0.1, 0.16),
+			Text = "!! ULTRA RARE · 1 in " .. fmt(res.oneIn) .. " !!",
+			TextColor3 = displayColor,
+			ZIndex = 40,
+		})
+		local walkTime = 2.8
+		local w0 = os.clock()
+		while os.clock() - w0 < walkTime do
+			local t = (os.clock() - w0) / walkTime
+			local step = math.abs(math.sin(t * walkTime * 9))
+			local pos = walkFrom.Position:Lerp(stand.Position, t) + Vector3.new(0, step * 0.5 * full, 0)
+			b:PivotTo(CFrame.new(pos) * CFrame.Angles(0, math.rad(-90), math.sin(t * walkTime * 9) * 0.06))
+			local focus = pos + Vector3.new(0, 2 * full, 0)
+			camera.CFrame = shake(CFrame.lookAt(stand.Position + Vector3.new(6, 2.5, -13), focus), step * 0.25)
+			camera.FieldOfView = 60 - t * 15
+			jitterLines(0.4)
+			task.wait()
+		end
+		-- Gira hacia la cámara y ruge
+		for i = 1, 10 do
+			b:PivotTo(stand * CFrame.Angles(0, math.rad(-90 + 9 * i), 0))
+			task.wait(0.02)
+		end
+		b:ScaleTo(full * 1.15)
+		task.wait(0.08)
+		b:ScaleTo(full)
+		task.wait(0.5)
+		title:Destroy()
+		rock.Transparency = 0
+		t0 = os.clock()
+	end
+	camera.FieldOfView = 85
 	local dir = (landPos - startPos).Unit
 	t0 = os.clock()
 	while true do
@@ -635,7 +745,7 @@ local function playShot(res)
 	rock:Destroy()
 	speedLines.Visible = false
 	task.spawn(impactFrame)
-	shout("HIT!!", rar.color, 6)
+	shout("HIT!!", displayColor, 6)
 	local hitCam = CFrame.lookAt(landPos + Vector3.new(6, 4, -8), landPos + Vector3.new(0, 1.5, 3))
 	camera.CFrame = hitCam
 	camera.FieldOfView = 55
@@ -654,7 +764,7 @@ local function playShot(res)
 		camera.CFrame = shake(hitCam, 1)
 		task.wait()
 	end
-	banner(a, rar)
+	banner(a, rar, variant)
 
 	-- El animal parpadea en rojo y se desvanece, de pie
 	if beast then
@@ -746,6 +856,9 @@ game:GetService("ProximityPromptService").PromptTriggered:Connect(function(promp
 	if prompt.Name == "WeaponShop" then
 		currentPanel = "Shop"
 		renderPanel()
+	elseif prompt.Name == "RobuxShop" then
+		currentPanel = "Robux"
+		renderPanel()
 	end
 end)
 
@@ -758,11 +871,31 @@ RunService.Heartbeat:Connect(function()
 	shootBtn.Visible = inZone
 	if inZone then
 		hint.Text = "Press SHOOT (or F) to hunt a beast!"
+	elseif player:GetAttribute("Training") then
+		hint.Text = "Training... stay on the range!"
 	elseif state and #state.held > 0 then
 		hint.Text = "Equip your animal and click inside your stable to place it"
 	elseif state and #state.animals == 0 then
 		hint.Text = "Walk forward to the Shoot Zone"
 	else
 		hint.Text = ""
+	end
+end)
+
+-- Variante Rainbow: los modelos con la etiqueta cambian de color
+local rainbowClock = 0
+RunService.Heartbeat:Connect(function(dt)
+	rainbowClock += dt
+	if rainbowClock < 0.08 then
+		return
+	end
+	rainbowClock = 0
+	local hue = (os.clock() * 0.25) % 1
+	for _, m in CollectionService:GetTagged("Rainbow") do
+		for _, p in m:GetDescendants() do
+			if p:IsA("BasePart") and p.Transparency < 1 then
+				p.Color = Color3.fromHSV((hue + p.Position.Y * 0.03) % 1, 0.8, 1)
+			end
+		end
 	end
 end)

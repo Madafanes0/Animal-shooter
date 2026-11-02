@@ -1,0 +1,14 @@
+{
+  "name": "KillABeast",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": { "Shared": { "$path": "src/shared" } },
+    "ServerScriptService": { "Server": { "$path": "src/server" } },
+    "StarterPlayer": {
+      "StarterPlayerScripts": { "Client": { "$path": "src/client" } },
+      "$properties": { "CameraMaxZoomDistance": 60 }
+    },
+    "Lighting": { "$properties": { "Technology": "Future", "ClockTime": 13 } },
+    "TextChatService": { "$properties": { "ChatVersion": "TextChatService" } }
+  }
+}

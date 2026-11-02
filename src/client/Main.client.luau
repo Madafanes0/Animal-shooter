@@ -1,0 +1,550 @@
+-- Kill a Beast: cliente (HUD, paneles y la cámara que sigue el disparo)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Beasts = require(ReplicatedStorage.Shared.Beasts)
+local fmt = require(ReplicatedStorage.Shared.Format)
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local state: any = nil
+local shooting = false
+
+---------------------------------------------------------------- UI base
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "KillABeastUI"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local FONT = Enum.Font.FredokaOne
+
+local function corner(p: Instance, r: number?)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r or 10)
+	c.Parent = p
+end
+
+local function stroke(p: Instance, color: Color3?, thick: number?)
+	local s = Instance.new("UIStroke")
+	s.Color = color or Color3.new(0, 0, 0)
+	s.Thickness = thick or 2.5
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent = p
+end
+
+local function text(parent: Instance, props: { [string]: any }): TextLabel
+	local t = Instance.new("TextLabel")
+	t.BackgroundTransparency = 1
+	t.Font = FONT
+	t.TextColor3 = Color3.new(1, 1, 1)
+	t.TextStrokeTransparency = 0
+	t.TextScaled = true
+	for k, v in props do
+		(t :: any)[k] = v
+	end
+	t.Parent = parent
+	return t
+end
+
+local function button(parent: Instance, label: string, color: Color3, size: UDim2, pos: UDim2): TextButton
+	local b = Instance.new("TextButton")
+	b.Size = size
+	b.Position = pos
+	b.BackgroundColor3 = color
+	b.Font = FONT
+	b.Text = label
+	b.TextScaled = true
+	b.TextColor3 = Color3.new(1, 1, 1)
+	b.TextStrokeTransparency = 0
+	b.AutoButtonColor = true
+	corner(b, 8)
+	stroke(b)
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop = UDim.new(0.15, 0)
+	pad.PaddingBottom = UDim.new(0.15, 0)
+	pad.PaddingLeft = UDim.new(0, 6)
+	pad.PaddingRight = UDim.new(0, 6)
+	pad.Parent = b
+	b.Parent = parent
+	return b
+end
+
+-- Botones laterales (como Shop / Index de Steal an Egg)
+local side = Instance.new("Frame")
+side.BackgroundTransparency = 1
+side.Size = UDim2.fromOffset(130, 170)
+side.Position = UDim2.new(0, 8, 0.5, -85)
+side.Parent = gui
+local list = Instance.new("UIListLayout")
+list.Padding = UDim.new(0, 8)
+list.Parent = side
+local shopBtn = button(side, "Shop", Color3.fromRGB(60, 200, 50), UDim2.new(1, 0, 0, 48), UDim2.new())
+local stableBtn = button(side, "Stable", Color3.fromRGB(230, 140, 40), UDim2.new(1, 0, 0, 48), UDim2.new())
+local indexBtn = button(side, "Index", Color3.fromRGB(40, 170, 230), UDim2.new(1, 0, 0, 48), UDim2.new())
+
+-- Dinero y poder abajo a la izquierda
+local stats = Instance.new("Frame")
+stats.BackgroundTransparency = 1
+stats.Size = UDim2.fromOffset(260, 80)
+stats.Position = UDim2.new(0, 10, 1, -90)
+stats.Parent = gui
+local powerLabel = text(stats, { Size = UDim2.new(1, 0, 0.45, 0), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(80, 200, 255), Text = "Power 0" })
+local moneyLabel = text(stats, { Size = UDim2.new(1, 0, 0.55, 0), Position = UDim2.fromScale(0, 0.45), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(90, 255, 90), Text = "$0" })
+
+-- Info del arma y del establo arriba a la derecha
+local info = text(gui, { Size = UDim2.fromOffset(260, 50), Position = UDim2.new(1, -270, 0, 8), TextXAlignment = Enum.TextXAlignment.Right, Text = "" })
+
+-- Pista central y botón de disparo
+local hint = text(gui, { Size = UDim2.new(0.6, 0, 0, 36), Position = UDim2.new(0.2, 0, 0, 10), Text = "" })
+local shootBtn = button(gui, "SHOOT!", Color3.fromRGB(230, 50, 50), UDim2.fromOffset(200, 70), UDim2.new(0.5, -100, 1, -100))
+shootBtn.Visible = false
+
+local homeBtn = button(gui, "Base", Color3.fromRGB(110, 110, 200), UDim2.fromOffset(100, 44), UDim2.new(1, -110, 1, -54))
+
+-- Avisos flotantes
+local function toast(msg: string, color: Color3?)
+	local t = text(gui, {
+		Size = UDim2.new(0.5, 0, 0, 34),
+		Position = UDim2.new(0.25, 0, 0.3, 0),
+		Text = msg,
+		TextColor3 = color or Color3.new(1, 1, 1),
+		ZIndex = 20,
+	})
+	TweenService:Create(t, TweenInfo.new(1.6), { Position = UDim2.new(0.25, 0, 0.2, 0), TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	task.delay(1.7, t.Destroy, t)
+end
+
+Remotes.Notify.OnClientEvent:Connect(function(msg, color)
+	toast(msg, color)
+end)
+
+---------------------------------------------------------------- Paneles
+
+local panel = Instance.new("Frame")
+panel.Size = UDim2.new(0.6, 0, 0.7, 0)
+panel.Position = UDim2.new(0.2, 0, 0.15, 0)
+panel.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+panel.Visible = false
+panel.ZIndex = 5
+corner(panel, 14)
+stroke(panel, Color3.new(0, 0, 0), 4)
+local sizeLimit = Instance.new("UISizeConstraint")
+sizeLimit.MinSize = Vector2.new(300, 260)
+sizeLimit.MaxSize = Vector2.new(720, 520)
+sizeLimit.Parent = panel
+panel.Parent = gui
+
+local panelTitle = text(panel, { Size = UDim2.new(1, -70, 0, 42), Position = UDim2.fromOffset(14, 6), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6 })
+local closeBtn = button(panel, "X", Color3.fromRGB(230, 50, 50), UDim2.fromOffset(42, 42), UDim2.new(1, -50, 0, 6))
+closeBtn.ZIndex = 6
+local header = Instance.new("Frame")
+header.BackgroundTransparency = 1
+header.Size = UDim2.new(1, -24, 0, 0)
+header.Position = UDim2.fromOffset(12, 54)
+header.ZIndex = 6
+header.Parent = panel
+local scroll = Instance.new("ScrollingFrame")
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 8
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.CanvasSize = UDim2.new()
+scroll.ZIndex = 6
+scroll.Parent = panel
+local grid = Instance.new("UIGridLayout")
+grid.CellPadding = UDim2.fromOffset(8, 8)
+grid.SortOrder = Enum.SortOrder.LayoutOrder
+grid.Parent = scroll
+
+local currentPanel: string? = nil
+local renderPanel: () -> ()
+
+local function card(order: number, color: Color3): Frame
+	local f = Instance.new("Frame")
+	f.LayoutOrder = order
+	f.BackgroundColor3 = color
+	f.ZIndex = 7
+	corner(f, 8)
+	stroke(f, Color3.new(0, 0, 0), 2)
+	f.Parent = scroll
+	return f
+end
+
+local function setHeader(height: number)
+	header.Size = UDim2.new(1, -24, 0, height)
+	scroll.Position = UDim2.fromOffset(12, 58 + height)
+	scroll.Size = UDim2.new(1, -24, 1, -70 - height)
+end
+
+local function clearPanel()
+	for _, c in scroll:GetChildren() do
+		if not c:IsA("UIGridLayout") then
+			c:Destroy()
+		end
+	end
+	header:ClearAllChildren()
+end
+
+local function action(kind: string, arg: any?)
+	Remotes.Action:FireServer(kind, arg)
+end
+
+local function renderShop()
+	panelTitle.Text = "Weapon Shop"
+	setHeader(0)
+	grid.CellSize = UDim2.new(0.5, -4, 0, 96)
+	for i, w in Config.Weapons do
+		local owned = state.owned[tostring(i)]
+		local f = card(i, if owned then Color3.fromRGB(60, 90, 60) else Color3.fromRGB(70, 70, 90))
+		local sw = Instance.new("Frame")
+		sw.Size = UDim2.fromOffset(10, 76)
+		sw.Position = UDim2.fromOffset(8, 10)
+		sw.BackgroundColor3 = w.color
+		sw.ZIndex = 8
+		corner(sw, 4)
+		sw.Parent = f
+		text(f, { Size = UDim2.new(1, -130, 0, 30), Position = UDim2.fromOffset(26, 8), Text = i .. ". " .. w.name, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 8 })
+		text(f, {
+			Size = UDim2.new(1, -130, 0, 22),
+			Position = UDim2.fromOffset(26, 42),
+			Text = "Reach: Epoch " .. Config.epochAt(w.range) .. " (" .. w.range .. " studs)",
+			TextColor3 = Color3.fromRGB(200, 220, 255),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 8,
+		})
+		local label, color
+		if state.equipped == i then
+			label, color = "Equipped", Color3.fromRGB(120, 120, 120)
+		elseif owned then
+			label, color = "Equip", Color3.fromRGB(40, 170, 230)
+		else
+			label, color = "$" .. fmt(w.price), Color3.fromRGB(60, 200, 50)
+		end
+		local b = button(f, label, color, UDim2.fromOffset(96, 44), UDim2.new(1, -104, 0.5, -22))
+		b.ZIndex = 8
+		b.Activated:Connect(function()
+			action("BuyWeapon", i)
+		end)
+	end
+end
+
+local function renderStable()
+	local cap = Config.stableCapacity(state.stableLevel)
+	panelTitle.Text = string.format("Stable  %d/%d", #state.animals, cap)
+	setHeader(60)
+	local function upgrade(label: string, sub: string, x: number, kind: string, maxed: boolean)
+		local b = button(header, if maxed then label .. " (MAX)" else label .. "  " .. sub, Color3.fromRGB(230, 140, 40), UDim2.new(0.5, -4, 1, 0), UDim2.new(x, if x > 0 then 4 else 0, 0, 0))
+		b.ZIndex = 7
+		b.Activated:Connect(function()
+			action(kind)
+		end)
+	end
+	upgrade("+5 Slots", "$" .. fmt(Config.stableUpgradeCost(state.stableLevel)), 0, "UpgradeStable", state.stableLevel >= Config.STABLE_MAX_LEVEL)
+	upgrade("Trainer Lv" .. state.trainerLevel + 1, "$" .. fmt(Config.trainerUpgradeCost(state.trainerLevel)), 0.5, "UpgradeTrainer", state.trainerLevel >= Config.TRAINER_MAX_LEVEL)
+
+	grid.CellSize = UDim2.new(0.333, -6, 0, 110)
+	for slot, id in state.animals do
+		local a = Config.Animals[id]
+		local rar = Config.Rarities[a.rarity]
+		local f = card(slot, Color3.fromRGB(60, 60, 80))
+		stroke(f, rar.color, 3)
+		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 4), Text = rar.name, TextColor3 = rar.color, ZIndex = 8 })
+		text(f, { Size = UDim2.new(1, -10, 0, 22), Position = UDim2.fromOffset(5, 22), Text = a.name, ZIndex = 8 })
+		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 46), Text = "$" .. fmt(a.income) .. "/s", TextColor3 = Color3.fromRGB(90, 255, 90), ZIndex = 8 })
+		local b = button(f, "Sell $" .. fmt(Config.sellValue(a)), Color3.fromRGB(200, 60, 60), UDim2.new(1, -16, 0, 30), UDim2.new(0, 8, 1, -36))
+		b.ZIndex = 8
+		b.Activated:Connect(function()
+			action("Sell", slot)
+		end)
+	end
+end
+
+local function renderIndex()
+	local found = 0
+	for _ in state.discovered do
+		found += 1
+	end
+	panelTitle.Text = string.format("Index  %d/%d", found, #Config.AnimalOrder)
+	setHeader(0)
+	grid.CellSize = UDim2.new(0.2, -7, 0, 70)
+	for n, id in Config.AnimalOrder do
+		local a = Config.Animals[id]
+		local rar = Config.Rarities[a.rarity]
+		local known = state.discovered[tostring(id)]
+		local f = card(n, if known then a.color2 else Color3.fromRGB(30, 30, 35))
+		stroke(f, rar.color, 2)
+		text(f, { Size = UDim2.new(1, -6, 0, 16), Position = UDim2.fromOffset(3, 4), Text = Config.Epochs[a.epoch].name, TextColor3 = Color3.fromRGB(220, 220, 220), ZIndex = 8 })
+		text(f, { Size = UDim2.new(1, -6, 0, 26), Position = UDim2.fromOffset(3, 22), Text = if known then a.name else "???", ZIndex = 8 })
+		text(f, { Size = UDim2.new(1, -6, 0, 14), Position = UDim2.fromOffset(3, 50), Text = rar.name, TextColor3 = rar.color, ZIndex = 8 })
+	end
+end
+
+renderPanel = function()
+	if not currentPanel or not state then
+		panel.Visible = false
+		return
+	end
+	clearPanel()
+	panel.Visible = true
+	if currentPanel == "Shop" then
+		renderShop()
+	elseif currentPanel == "Stable" then
+		renderStable()
+	else
+		renderIndex()
+	end
+end
+
+local function toggle(name: string)
+	currentPanel = if currentPanel == name then nil else name
+	renderPanel()
+end
+shopBtn.Activated:Connect(function()
+	toggle("Shop")
+end)
+stableBtn.Activated:Connect(function()
+	toggle("Stable")
+end)
+indexBtn.Activated:Connect(function()
+	toggle("Index")
+end)
+closeBtn.Activated:Connect(function()
+	currentPanel = nil
+	renderPanel()
+end)
+homeBtn.Activated:Connect(function()
+	action("Home")
+end)
+
+---------------------------------------------------------------- Estado
+
+local lastPanelKey = ""
+local function onState()
+	local raw = player:GetAttribute("State")
+	if not raw then
+		return
+	end
+	state = HttpService:JSONDecode(raw)
+	moneyLabel.Text = "$" .. fmt(state.money) .. "  (+$" .. fmt(state.income) .. "/s)"
+	powerLabel.Text = "Power " .. fmt(state.power) .. "  (+" .. Config.trainerGain(state.trainerLevel) .. "/train)"
+	local w = Config.Weapons[state.equipped]
+	local reach = Config.shotDistance(state.equipped, state.power)
+	info.Text = w.name .. "\nReach: Epoch " .. Config.epochAt(reach) .. " · Stable " .. #state.animals .. "/" .. Config.stableCapacity(state.stableLevel)
+	-- El dinero sube cada segundo; sólo redibuja el panel si cambió algo más
+	local key = HttpService:JSONEncode({ state.owned, state.equipped, state.animals, state.stableLevel, state.trainerLevel, state.discovered, currentPanel == "Shop" and math.floor(state.money) or 0 })
+	if key ~= lastPanelKey then
+		lastPanelKey = key
+		renderPanel()
+	end
+end
+player:GetAttributeChangedSignal("State"):Connect(onState)
+onState()
+
+---------------------------------------------------------------- Disparo
+
+local function root(): BasePart?
+	local c = player.Character
+	return c and c:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+local function inShootZone(): boolean
+	local r = root()
+	if not r then
+		return false
+	end
+	local p = r.Position
+	return math.abs(p.X) <= Config.FIELD_WIDTH / 2 and p.Z > -16 and p.Z < 16
+end
+
+local function banner(a, rar)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(0.7, 0, 0, 110)
+	f.Position = UDim2.new(0.15, 0, 0.12, 0)
+	f.BackgroundTransparency = 1
+	f.ZIndex = 30
+	f.Parent = gui
+	text(f, { Size = UDim2.new(1, 0, 0.35, 0), Text = rar.name:upper(), TextColor3 = rar.color, ZIndex = 30 })
+	text(f, { Size = UDim2.new(1, 0, 0.4, 0), Position = UDim2.fromScale(0, 0.35), Text = "You hunted a " .. a.name .. "!", ZIndex = 30 })
+	text(f, { Size = UDim2.new(1, 0, 0.25, 0), Position = UDim2.fromScale(0, 0.75), Text = "+$" .. fmt(a.income) .. "/s", TextColor3 = Color3.fromRGB(90, 255, 90), ZIndex = 30 })
+	local scale = Instance.new("UIScale")
+	scale.Scale = 0.2
+	scale.Parent = f
+	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+	task.delay(2.4, f.Destroy, f)
+end
+
+-- Bala con cámara bloqueada: sigue el proyectil y, al final, aparece el animal y cae
+local function playShot(res)
+	local r = root()
+	if not r then
+		return
+	end
+	local a = Config.Animals[res.animal]
+	local rar = Config.Rarities[a.rarity]
+	local weapon = Config.Weapons[res.weapon]
+	local humanoid = (player.Character :: Model):FindFirstChildOfClass("Humanoid")
+	local oldSpeed = humanoid and humanoid.WalkSpeed or 16
+	if humanoid then
+		humanoid.WalkSpeed = 0
+	end
+	shootBtn.Visible = false
+	side.Visible = false
+	panel.Visible = false
+
+	local startPos = r.Position + Vector3.new(0, 2.5, 0)
+	local landPos = Vector3.new(res.x, 1.5, Config.FIELD_START + res.dist)
+	local peak = math.clamp(res.dist * 0.08, 12, 90)
+	local duration = math.clamp(1.2 + res.dist / 450, 1.4, 6)
+
+	local rock = Instance.new("Part")
+	rock.Shape = Enum.PartType.Ball
+	rock.Size = Vector3.new(1.2, 1.2, 1.2)
+	rock.Color = if res.weapon == 1 then Color3.fromRGB(130, 130, 130) else weapon.color
+	rock.Material = if res.weapon == 1 then Enum.Material.Slate else Enum.Material.Neon
+	rock.Anchored = true
+	rock.CanCollide = false
+	rock.Parent = workspace
+	local a0 = Instance.new("Attachment", rock)
+	a0.Position = Vector3.new(0, 0.4, 0)
+	local a1 = Instance.new("Attachment", rock)
+	a1.Position = Vector3.new(0, -0.4, 0)
+	local trail = Instance.new("Trail")
+	trail.Attachment0 = a0
+	trail.Attachment1 = a1
+	trail.Color = ColorSequence.new(rock.Color)
+	trail.Lifetime = 0.4
+	trail.Parent = rock
+
+	camera.CameraType = Enum.CameraType.Scriptable
+	local beast: Model? = nil
+	local t0 = os.clock()
+	local done = false
+	local conn
+	conn = RunService.RenderStepped:Connect(function()
+		local alpha = math.min((os.clock() - t0) / duration, 1)
+		local pos = startPos:Lerp(landPos, alpha) + Vector3.new(0, math.sin(alpha * math.pi) * peak, 0)
+		rock.Position = pos
+		local dir = (landPos - startPos).Unit
+		camera.CFrame = CFrame.lookAt(pos - dir * 14 + Vector3.new(0, 4, 0), pos + dir * 6)
+		-- "De repente" aparece el animal cuando la bala va llegando
+		if alpha > 0.8 and not beast then
+			local b = Beasts.build(res.animal, CFrame.new(landPos.X, 0, landPos.Z + 2) * CFrame.Angles(0, math.rad(180), 0), false)
+			b:ScaleTo(0.05)
+			b.Parent = workspace
+			beast = b
+			task.spawn(function()
+				for i = 1, 8 do
+					if b.Parent then
+						b:ScaleTo(i / 8)
+					end
+					task.wait(0.02)
+				end
+			end)
+		end
+		if alpha >= 1 then
+			done = true
+			conn:Disconnect()
+		end
+	end)
+	repeat
+		task.wait()
+	until done
+
+	-- Impacto
+	rock:Destroy()
+	local hit = Instance.new("Part")
+	hit.Shape = Enum.PartType.Ball
+	hit.Anchored = true
+	hit.CanCollide = false
+	hit.Material = Enum.Material.Neon
+	hit.Color = rar.color
+	hit.Size = Vector3.new(1, 1, 1)
+	hit.Position = landPos
+	hit.Parent = workspace
+	TweenService:Create(hit, TweenInfo.new(0.4), { Size = Vector3.new(14, 14, 14), Transparency = 1 }):Play()
+	task.delay(0.5, hit.Destroy, hit)
+	banner(a, rar)
+	if beast then
+		local b = beast
+		local pivot = b:GetPivot()
+		task.spawn(function()
+			for i = 1, 12 do
+				b:PivotTo(pivot * CFrame.new(0, 0, 0) * CFrame.Angles(0, 0, math.rad(90 * i / 12)) + Vector3.new(0, 0.1 * i, 0))
+				task.wait(0.02)
+			end
+		end)
+	end
+	-- Órbita lenta alrededor del animal caído
+	local orbit0 = os.clock()
+	while os.clock() - orbit0 < 2 do
+		local ang = (os.clock() - orbit0) * 0.8
+		camera.CFrame = CFrame.lookAt(landPos + Vector3.new(math.sin(ang) * 14, 7, -math.cos(ang) * 14), landPos)
+		task.wait()
+	end
+	if beast then
+		beast:Destroy()
+	end
+
+	-- De vuelta a la base
+	action("Home")
+	task.wait(0.15)
+	camera.CameraType = Enum.CameraType.Custom
+	if humanoid then
+		humanoid.WalkSpeed = oldSpeed
+	end
+	side.Visible = true
+	renderPanel()
+end
+
+local function shoot()
+	if shooting or not inShootZone() then
+		return
+	end
+	shooting = true
+	local ok, res = pcall(function()
+		return Remotes.Shoot:InvokeServer()
+	end)
+	if ok and res then
+		if res.err then
+			toast(res.err, Color3.fromRGB(255, 120, 120))
+		else
+			playShot(res)
+		end
+	end
+	shooting = false
+end
+
+shootBtn.Activated:Connect(shoot)
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.F or input.KeyCode == Enum.KeyCode.ButtonR2 then
+		shoot()
+	end
+end)
+
+RunService.Heartbeat:Connect(function()
+	if shooting then
+		return
+	end
+	local inZone = inShootZone()
+	shootBtn.Visible = inZone
+	if inZone then
+		hint.Text = "Press SHOOT (or F) to hunt a beast!"
+	elseif state and #state.animals == 0 then
+		hint.Text = "Walk forward to the Shoot Zone"
+	else
+		hint.Text = ""
+	end
+end)

@@ -42,6 +42,19 @@ local epochDefs = {
 	{ "Cosmic Void", "#1a1030", "#2a1a50", "#1f1240", "#ff5aff", { "Void Mite", "Star Jelly", "Nebula Fox", "Galaxy Stag", "Cosmic Leviathan" } },
 }
 
+-- Forma del modelo según el nombre (lo demás es cuadrúpedo)
+local kinds = {
+	bird = { "Parrot", "Heron", "Penguin", "Eagle", "Ice Phoenix", "Crow", "Banshee Owl", "Thunder Hawk", "Dodo", "Glow Moth", "Storm Griffin" },
+	serpent = { "Sand Wyrm", "Swamp Hydra", "Shark", "Kraken", "Prism Serpent", "Lunar Whale", "Cosmic Leviathan", "Star Jelly", "Space Slug", "Snail", "Cave Basilisk", "Lizard", "Fire Salamander", "Crocodile", "Sky Ray" },
+	bug = { "Scorpion", "Lava Beetle", "Gem Beetle", "Cave Spider", "Void Mite", "Crab", "Magma Crab", "Crater Crab", "Octopus", "Bat" },
+}
+local kindOf = {}
+for kind, names in kinds do
+	for _, n in names do
+		kindOf[n] = kind
+	end
+end
+
 C.Epochs = {}
 C.Animals = {} -- id -> animal
 C.AnimalOrder = {}
@@ -65,6 +78,7 @@ for e, def in epochDefs do
 			name = name,
 			epoch = e,
 			rarity = r,
+			kind = kindOf[name] or "quad",
 			income = math.max(1, math.floor(base * C.Rarities[r].mult + 0.5)),
 			color = Color3.fromHSV(h, 0.5, 0.9),
 			color2 = Color3.fromHSV(h, 0.65, 0.6),

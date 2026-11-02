@@ -7,6 +7,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Beasts = require(ReplicatedStorage.Shared.Beasts)
 local Map = require(script.Parent.Map)
+local Tiles = require(ReplicatedStorage.Shared.Tiles)
+local WeaponModels = require(ReplicatedStorage.Shared.WeaponModels)
 
 local remotes = Instance.new("Folder")
 remotes.Name = "Remotes"
@@ -133,7 +135,8 @@ local function buildPlot(i: number): Model
 	local m = Instance.new("Model")
 	m.Name = "Plot" .. i
 	local cf = plotCFrames[i]
-	plotPart(m, Vector3.new(52, 0.4, 100), cf * CFrame.new(0, 0.2, 0), Color3.fromRGB(120, 225, 80), Enum.Material.SmoothPlastic)
+	local plotFloor = plotPart(m, Vector3.new(52, 0.4, 64), cf * CFrame.new(0, 0.2, -12), Color3.fromRGB(120, 225, 80), Enum.Material.SmoothPlastic)
+	Tiles(plotFloor, { Enum.NormalId.Top }, 6)
 
 	-- Establo chico (corral al fondo, granero detrás)
 	local penCenter = cf * CFrame.new(0, 0, -22)
@@ -270,6 +273,30 @@ local function sendHome(plr: Player)
 	end
 end
 
+-- Pone el arma equipada en la mano (quita la anterior)
+local function giveWeapon(plr: Player)
+	local d = data[plr]
+	local char = plr.Character
+	if not d or not char then
+		return
+	end
+	for _, container in { plr:FindFirstChildOfClass("Backpack"), char } do
+		if container then
+			for _, t in container:GetChildren() do
+				if t:IsA("Tool") and t:GetAttribute("WeaponIndex") then
+					t:Destroy()
+				end
+			end
+		end
+	end
+	local tool = WeaponModels.tool(d.equipped)
+	tool.Parent = plr:FindFirstChildOfClass("Backpack")
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum:EquipTool(tool)
+	end
+end
+
 ---------------------------------------------------------------- Disparo
 
 local function inShootZone(plr: Player): boolean
@@ -330,6 +357,7 @@ function handlers.BuyWeapon(plr: Player, d: Data, index: any)
 	if d.owned[key] then
 		d.equipped = w.index
 		notify(plr, "Equipped " .. w.name)
+		giveWeapon(plr)
 		return
 	end
 	if not d.owned[tostring(w.index - 1)] then
@@ -344,6 +372,7 @@ function handlers.BuyWeapon(plr: Player, d: Data, index: any)
 	d.owned[key] = true
 	d.equipped = w.index
 	notify(plr, "Bought " .. w.name .. "!", Color3.fromRGB(90, 255, 90))
+	giveWeapon(plr)
 end
 
 function handlers.UpgradeStable(plr: Player, d: Data)
@@ -456,9 +485,11 @@ Players.PlayerAdded:Connect(function(plr)
 		char:WaitForChild("HumanoidRootPart")
 		task.wait()
 		sendHome(plr)
+		giveWeapon(plr)
 	end)
 	if plr.Character then
 		sendHome(plr)
+		giveWeapon(plr)
 	end
 end)
 

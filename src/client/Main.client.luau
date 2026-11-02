@@ -385,64 +385,213 @@ local function banner(a, rar)
 	task.delay(2.4, f.Destroy, f)
 end
 
--- Bala con cámara bloqueada: sigue el proyectil y, al final, aparece el animal y cae
+---------------------------------------------------------------- Efectos anime
+
+-- Barras de cine, líneas de velocidad y flash de impacto
+local fx = Instance.new("ScreenGui")
+fx.Name = "AnimeFX"
+fx.IgnoreGuiInset = true
+fx.ResetOnSpawn = false
+fx.DisplayOrder = 10
+fx.Parent = player.PlayerGui
+
+local function bar(top: boolean): Frame
+	local f = Instance.new("Frame")
+	f.BackgroundColor3 = Color3.new(0, 0, 0)
+	f.BorderSizePixel = 0
+	f.Size = UDim2.new(1, 0, 0.13, 0)
+	f.AnchorPoint = Vector2.new(0, if top then 1 else 0)
+	f.Position = UDim2.fromScale(0, if top then 0 else 1)
+	f.Parent = fx
+	return f
+end
+local topBar, bottomBar = bar(true), bar(false)
+
+local function cinematic(on: boolean)
+	local info = TweenInfo.new(0.25, Enum.EasingStyle.Quad)
+	TweenService:Create(topBar, info, { AnchorPoint = Vector2.new(0, if on then 0 else 1) }):Play()
+	TweenService:Create(bottomBar, info, { AnchorPoint = Vector2.new(0, if on then 1 else 0) }):Play()
+end
+
+local speedLines = Instance.new("Frame")
+speedLines.BackgroundTransparency = 1
+speedLines.Size = UDim2.fromScale(1, 1)
+speedLines.Visible = false
+speedLines.Parent = fx
+local lines = {}
+for i = 1, 36 do
+	local l = Instance.new("Frame")
+	l.BackgroundColor3 = Color3.new(1, 1, 1)
+	l.BorderSizePixel = 0
+	l.AnchorPoint = Vector2.new(0.5, 0.5)
+	l.Parent = speedLines
+	lines[i] = l
+end
+
+-- Recoloca las líneas radiales al azar (se llama cada frame para que parpadeen)
+local function jitterLines(strength: number)
+	for i, l in lines do
+		local ang = (i / #lines) * math.pi * 2 + math.random() * 0.15
+		local r = 0.32 + math.random() * 0.2
+		l.Size = UDim2.new(0, math.random(2, 5), 0.18 + math.random() * 0.25 * strength, 0)
+		l.Position = UDim2.fromScale(0.5 + math.cos(ang) * r, 0.5 + math.sin(ang) * r * 1.4)
+		l.Rotation = math.deg(ang) + 90
+		l.BackgroundTransparency = 0.15 + math.random() * 0.5
+	end
+end
+
+local flash = Instance.new("Frame")
+flash.Size = UDim2.fromScale(1, 1)
+flash.BorderSizePixel = 0
+flash.BackgroundTransparency = 1
+flash.ZIndex = 50
+flash.Parent = fx
+
+-- Impact frame: blanco - negro - blanco y se desvanece
+local function impactFrame()
+	flash.BackgroundColor3 = Color3.new(1, 1, 1)
+	flash.BackgroundTransparency = 0
+	task.wait(0.05)
+	flash.BackgroundColor3 = Color3.new(0, 0, 0)
+	task.wait(0.05)
+	flash.BackgroundColor3 = Color3.new(1, 1, 1)
+	TweenService:Create(flash, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
+end
+
+-- Texto gigante inclinado ("FIRE!!", "HIT!!")
+local function shout(msg: string, color: Color3, rot: number)
+	local t = text(fx, {
+		Size = UDim2.fromScale(0.7, 0.22),
+		Position = UDim2.fromScale(0.15, 0.3),
+		Text = msg,
+		TextColor3 = color,
+		Rotation = rot,
+		ZIndex = 40,
+	})
+	local st = Instance.new("UIStroke")
+	st.Thickness = 5
+	st.Parent = t
+	local sc = Instance.new("UIScale")
+	sc.Scale = 2.2
+	sc.Parent = t
+	TweenService:Create(sc, TweenInfo.new(0.18, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+	task.delay(0.55, function()
+		TweenService:Create(t, TweenInfo.new(0.25), { TextTransparency = 1 }):Play()
+		TweenService:Create(st, TweenInfo.new(0.25), { Transparency = 1 }):Play()
+	end)
+	task.delay(0.85, t.Destroy, t)
+end
+
+local function shake(cf: CFrame, amount: number): CFrame
+	return cf * CFrame.new((math.random() - 0.5) * amount, (math.random() - 0.5) * amount, 0)
+end
+
+local function tweenCamera(to: CFrame, fov: number, time: number)
+	TweenService:Create(camera, TweenInfo.new(time, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { CFrame = to, FieldOfView = fov }):Play()
+	task.wait(time)
+end
+
+---------------------------------------------------------------- Disparo anime
+
+-- 1) agarras el arma y apuntas (cámara al hombro, barras, líneas), 2) FIRE!! con impact frame,
+-- 3) la cámara persigue la bala, 4) el animal aparece de golpe, HIT!! y se desvanece, 5) a tu base
 local function playShot(res)
 	local r = root()
-	if not r then
+	local char = player.Character
+	if not r or not char then
 		return
 	end
 	local a = Config.Animals[res.animal]
 	local rar = Config.Rarities[a.rarity]
 	local weapon = Config.Weapons[res.weapon]
-	local humanoid = (player.Character :: Model):FindFirstChildOfClass("Humanoid")
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
 	local oldSpeed = humanoid and humanoid.WalkSpeed or 16
+	local oldJump = humanoid and humanoid.JumpPower or 50
 	if humanoid then
 		humanoid.WalkSpeed = 0
+		humanoid.JumpPower = 0
+		local tool = player.Backpack:FindFirstChildWhichIsA("Tool")
+		if tool and not char:FindFirstChildWhichIsA("Tool") then
+			humanoid:EquipTool(tool)
+		end
 	end
 	shootBtn.Visible = false
 	side.Visible = false
 	panel.Visible = false
+	hint.Text = ""
+	local oldFov = camera.FieldOfView
 
-	local startPos = r.Position + Vector3.new(0, 2.5, 0)
+	-- Mira hacia el campo
+	r.CFrame = CFrame.lookAt(r.Position, r.Position + Vector3.new(0, 0, 1))
+	camera.CameraType = Enum.CameraType.Scriptable
+	cinematic(true)
+
+	-- Fase 1: apuntar (cámara sobre el hombro, se cierra el FOV)
+	local shoulder = r.CFrame * CFrame.new(2.2, 2.2, 5.5)
+	local aimAt = r.Position + Vector3.new(0, 2, 40)
+	tweenCamera(CFrame.lookAt(shoulder.Position, aimAt), 50, 0.45)
+	speedLines.Visible = true
+	local t0 = os.clock()
+	while os.clock() - t0 < 0.7 do
+		jitterLines(0.6)
+		local pull = (os.clock() - t0) / 0.7
+		camera.CFrame = CFrame.lookAt(shoulder.Position + Vector3.new(0, 0, pull * 1.5), aimAt)
+		camera.FieldOfView = 50 - pull * 12
+		task.wait()
+	end
+
+	-- Fase 2: FIRE!!
+	task.spawn(impactFrame)
+	shout("FIRE!!", Color3.fromRGB(255, 80, 60), -8)
+	for _ = 1, 6 do
+		camera.CFrame = shake(camera.CFrame, 0.8)
+		task.wait()
+	end
+
+	-- Fase 3: la cámara sigue la bala
+	local startPos = r.Position + Vector3.new(0.8, 2.5, 2)
 	local landPos = Vector3.new(res.x, 1.5, Config.FIELD_START + res.dist)
-	local peak = math.clamp(res.dist * 0.08, 12, 90)
-	local duration = math.clamp(1.2 + res.dist / 450, 1.4, 6)
+	local peak = math.clamp(res.dist * 0.06, 8, 70)
+	local duration = math.clamp(1 + res.dist / 500, 1.2, 5)
 
 	local rock = Instance.new("Part")
 	rock.Shape = Enum.PartType.Ball
 	rock.Size = Vector3.new(1.2, 1.2, 1.2)
-	rock.Color = if res.weapon == 1 then Color3.fromRGB(130, 130, 130) else weapon.color
-	rock.Material = if res.weapon == 1 then Enum.Material.Slate else Enum.Material.Neon
+	rock.Color = if res.weapon <= 2 then Color3.fromRGB(130, 130, 130) else weapon.color
+	rock.Material = if res.weapon <= 2 then Enum.Material.Slate else Enum.Material.Neon
 	rock.Anchored = true
 	rock.CanCollide = false
 	rock.Parent = workspace
 	local a0 = Instance.new("Attachment", rock)
-	a0.Position = Vector3.new(0, 0.4, 0)
+	a0.Position = Vector3.new(0, 0.5, 0)
 	local a1 = Instance.new("Attachment", rock)
-	a1.Position = Vector3.new(0, -0.4, 0)
+	a1.Position = Vector3.new(0, -0.5, 0)
 	local trail = Instance.new("Trail")
 	trail.Attachment0 = a0
 	trail.Attachment1 = a1
-	trail.Color = ColorSequence.new(rock.Color)
-	trail.Lifetime = 0.4
+	trail.Color = ColorSequence.new(rar.color)
+	trail.LightEmission = 1
+	trail.Lifetime = 0.5
 	trail.Parent = rock
 
-	camera.CameraType = Enum.CameraType.Scriptable
+	camera.FieldOfView = 85
 	local beast: Model? = nil
-	local t0 = os.clock()
-	local done = false
-	local conn
-	conn = RunService.RenderStepped:Connect(function()
+	local dir = (landPos - startPos).Unit
+	t0 = os.clock()
+	while true do
 		local alpha = math.min((os.clock() - t0) / duration, 1)
-		local pos = startPos:Lerp(landPos, alpha) + Vector3.new(0, math.sin(alpha * math.pi) * peak, 0)
+		-- Ease: arranca rapidísimo y frena un poco al llegar (sensación de cámara lenta)
+		local eased = 1 - (1 - alpha) ^ 2
+		local pos = startPos:Lerp(landPos, eased) + Vector3.new(0, math.sin(eased * math.pi) * peak, 0)
 		rock.Position = pos
-		local dir = (landPos - startPos).Unit
-		camera.CFrame = CFrame.lookAt(pos - dir * 14 + Vector3.new(0, 4, 0), pos + dir * 6)
+		jitterLines(1)
+		camera.CFrame = shake(CFrame.lookAt(pos - dir * 9 + Vector3.new(0, 2.5, 0), pos + dir * 8), 0.15)
+		camera.FieldOfView = 85 - alpha * 25
 		-- "De repente" aparece el animal cuando la bala va llegando
-		if alpha > 0.8 and not beast then
-			local b = Beasts.build(res.animal, CFrame.new(landPos.X, 0, landPos.Z + 2) * CFrame.Angles(0, math.rad(180), 0), false)
-			b:ScaleTo(0.05)
+		if alpha > 0.75 and not beast then
+			local b = Beasts.build(res.animal, CFrame.new(landPos.X, 0, landPos.Z + 3), false)
 			b.Parent = workspace
+			b:ScaleTo(0.05)
 			beast = b
 			task.spawn(function()
 				for i = 1, 8 do
@@ -454,29 +603,37 @@ local function playShot(res)
 			end)
 		end
 		if alpha >= 1 then
-			done = true
-			conn:Disconnect()
+			break
 		end
-	end)
-	repeat
 		task.wait()
-	until done
+	end
 
-	-- Impacto
+	-- Fase 4: HIT!! con freeze frame
 	rock:Destroy()
-	local hit = Instance.new("Part")
-	hit.Shape = Enum.PartType.Ball
-	hit.Anchored = true
-	hit.CanCollide = false
-	hit.Material = Enum.Material.Neon
-	hit.Color = rar.color
-	hit.Size = Vector3.new(1, 1, 1)
-	hit.Position = landPos
-	hit.Parent = workspace
-	TweenService:Create(hit, TweenInfo.new(0.4), { Size = Vector3.new(14, 14, 14), Transparency = 1 }):Play()
-	task.delay(0.5, hit.Destroy, hit)
+	speedLines.Visible = false
+	task.spawn(impactFrame)
+	shout("HIT!!", rar.color, 6)
+	local hitCam = CFrame.lookAt(landPos + Vector3.new(6, 4, -8), landPos + Vector3.new(0, 1.5, 3))
+	camera.CFrame = hitCam
+	camera.FieldOfView = 55
+	local burst = Instance.new("Part")
+	burst.Shape = Enum.PartType.Ball
+	burst.Anchored = true
+	burst.CanCollide = false
+	burst.Material = Enum.Material.Neon
+	burst.Color = rar.color
+	burst.Size = Vector3.new(1, 1, 1)
+	burst.Position = landPos + Vector3.new(0, 1, 3)
+	burst.Parent = workspace
+	TweenService:Create(burst, TweenInfo.new(0.45), { Size = Vector3.new(16, 16, 16), Transparency = 1 }):Play()
+	task.delay(0.5, burst.Destroy, burst)
+	for _ = 1, 8 do
+		camera.CFrame = shake(hitCam, 1)
+		task.wait()
+	end
 	banner(a, rar)
-	-- El animal se queda de pie: parpadea en rojo y se desvanece
+
+	-- El animal parpadea en rojo y se desvanece, de pie
 	if beast then
 		for _, p in beast:GetDescendants() do
 			if p:IsA("BasePart") then
@@ -489,23 +646,27 @@ local function playShot(res)
 			end
 		end
 	end
-	-- Órbita lenta alrededor del animal caído
+	-- Órbita lenta alrededor del animal
+	local center = landPos + Vector3.new(0, 1.5, 3)
 	local orbit0 = os.clock()
 	while os.clock() - orbit0 < 2 do
-		local ang = (os.clock() - orbit0) * 0.8
-		camera.CFrame = CFrame.lookAt(landPos + Vector3.new(math.sin(ang) * 14, 7, -math.cos(ang) * 14), landPos)
+		local ang = (os.clock() - orbit0) * 0.9 + 2.5
+		camera.CFrame = CFrame.lookAt(center + Vector3.new(math.sin(ang) * 11, 4, math.cos(ang) * 11), center)
 		task.wait()
 	end
 	if beast then
 		beast:Destroy()
 	end
 
-	-- De vuelta a la base
+	-- Fase 5: de vuelta a la base
+	cinematic(false)
 	action("Home")
 	task.wait(0.15)
 	camera.CameraType = Enum.CameraType.Custom
+	camera.FieldOfView = oldFov
 	if humanoid then
 		humanoid.WalkSpeed = oldSpeed
+		humanoid.JumpPower = oldJump
 	end
 	side.Visible = true
 	renderPanel()
@@ -538,6 +699,28 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		shoot()
 	end
 end)
+
+-- Click con el arma en la mano también dispara
+local function watchTools(char: Model)
+	char.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") and child:GetAttribute("WeaponIndex") then
+			child.Activated:Connect(shoot)
+		end
+	end)
+end
+if player.Character then
+	watchTools(player.Character)
+end
+player.CharacterAdded:Connect(watchTools)
+
+-- La tienda física abre el panel de armas
+game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt)
+	if prompt.Name == "WeaponShop" then
+		currentPanel = "Shop"
+		renderPanel()
+	end
+end)
+
 
 RunService.Heartbeat:Connect(function()
 	if shooting then

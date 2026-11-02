@@ -1,6 +1,8 @@
 -- Genera el mapa: zona de bases, línea de tiro y el corredor de 20 épocas
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
+local Tiles = require(ReplicatedStorage.Shared.Tiles)
+local WeaponModels = require(ReplicatedStorage.Shared.WeaponModels)
 
 local Map = {}
 
@@ -49,14 +51,21 @@ local function checkerWall(x: number, z0: number, z1: number, height: number, co
 		for j = 0, math.ceil(height / tile) - 1 do
 			local c = if (i + j) % 2 == 0 then colorA else colorB
 			local w = block(Vector3.new(4, tile, tile), Vector3.new(x, tile / 2 + j * tile, z0 + i * tile + tile / 2), c, nil, Enum.Material.SmoothPlastic)
-			w.TopSurface = Enum.SurfaceType.Smooth
+			Tiles(w, { Enum.NormalId.Left, Enum.NormalId.Right }, 5)
 		end
 	end
 end
 
 local function bush(pos: Vector3, color: Color3)
-	block(Vector3.new(10, 4, 8), pos + Vector3.new(0, 2, 0), color)
-	block(Vector3.new(6, 3, 6), pos + Vector3.new(1, 5.5, 0), color)
+	local all = { Enum.NormalId.Top, Enum.NormalId.Left, Enum.NormalId.Right, Enum.NormalId.Front, Enum.NormalId.Back }
+	Tiles(block(Vector3.new(10, 4, 8), pos + Vector3.new(0, 2, 0), color, nil, Enum.Material.SmoothPlastic), all, 2)
+	Tiles(block(Vector3.new(6, 3, 6), pos + Vector3.new(1, 5.5, 0), color, nil, Enum.Material.SmoothPlastic), all, 2)
+end
+
+local function floor(size: Vector3, pos: Vector3, color: Color3): Part
+	local p = block(size, pos, color, nil, Enum.Material.SmoothPlastic)
+	Tiles(p, { Enum.NormalId.Top }, 6)
+	return p
 end
 
 function Map.build(): { CFrame }
@@ -69,7 +78,7 @@ function Map.build(): { CFrame }
 
 	-- Zona de bases
 	local baseHalf = 172
-	block(Vector3.new(baseHalf * 2, 2, 110), Vector3.new(0, -1, -65), grass)
+	floor(Vector3.new(baseHalf * 2, 2, 110), Vector3.new(0, -1, -65), grass)
 	checkerWall(-baseHalf - 2, -120, -10, 40, Color3.fromRGB(200, 120, 75), Color3.fromRGB(176, 102, 64))
 	checkerWall(baseHalf + 2, -120, -10, 40, Color3.fromRGB(200, 120, 75), Color3.fromRGB(176, 102, 64))
 	block(Vector3.new(baseHalf * 2 + 8, 40, 4), Vector3.new(0, 20, -122), Color3.fromRGB(176, 102, 64), nil, Enum.Material.SmoothPlastic)
@@ -78,7 +87,7 @@ function Map.build(): { CFrame }
 	end
 
 	-- Línea de tiro
-	local shoot = block(Vector3.new(Config.FIELD_WIDTH, 0.2, 24), Vector3.new(0, 0.1, 0), Color3.fromRGB(240, 220, 140), nil, Enum.Material.Sand)
+	local shoot = floor(Vector3.new(Config.FIELD_WIDTH, 0.2, 24), Vector3.new(0, 0.1, 0), Color3.fromRGB(240, 220, 140))
 	shoot.Name = "ShootZone"
 	block(Vector3.new(Config.FIELD_WIDTH, 0.3, 1), Vector3.new(0, 0.15, 12), Color3.new(1, 1, 1))
 	sign("SHOOT ZONE", Vector3.new(0, 18, -11), Color3.fromRGB(255, 230, 80))
@@ -88,7 +97,7 @@ function Map.build(): { CFrame }
 	for e, epoch in Config.Epochs do
 		local z0 = Config.FIELD_START + (e - 1) * Config.ZONE_LEN - (if e == 1 then Config.FIELD_START - 12 else 0)
 		local z1 = Config.FIELD_START + e * Config.ZONE_LEN
-		block(Vector3.new(Config.FIELD_WIDTH, 2, z1 - z0), Vector3.new(0, -1, (z0 + z1) / 2), epoch.ground)
+		floor(Vector3.new(Config.FIELD_WIDTH, 2, z1 - z0), Vector3.new(0, -1, (z0 + z1) / 2), epoch.ground)
 		checkerWall(-halfW - 2, z0, z1, 40, epoch.wallA, epoch.wallB)
 		checkerWall(halfW + 2, z0, z1, 40, epoch.wallA, epoch.wallB)
 		-- Franja y letrero de inicio de época
@@ -102,11 +111,40 @@ function Map.build(): { CFrame }
 	local endZ = Config.FIELD_START + Config.NUM_EPOCHS * Config.ZONE_LEN
 	block(Vector3.new(Config.FIELD_WIDTH + 8, 60, 4), Vector3.new(0, 30, endZ + 2), Color3.fromRGB(30, 10, 50))
 
+	-- Tienda de armas: puesto con toldo entre las bases y la línea de tiro
+	local shop = Instance.new("Model")
+	shop.Name = "WeaponShop"
+	shop.Parent = folder
+	local shopCF = CFrame.new(0, 0, -32)
+	local counter = block(Vector3.new(20, 3.5, 4), (shopCF * CFrame.new(0, 1.75, 0)).Position, Color3.fromRGB(150, 90, 50), shop, Enum.Material.WoodPlanks)
+	block(Vector3.new(21, 0.4, 5), (shopCF * CFrame.new(0, 3.7, 0)).Position, Color3.fromRGB(110, 65, 35), shop, Enum.Material.Wood)
+	for _, x in { -9.5, 9.5 } do
+		block(Vector3.new(1, 12, 1), (shopCF * CFrame.new(x, 6, 1.5)).Position, Color3.fromRGB(110, 65, 35), shop, Enum.Material.Wood)
+	end
+	for i = 0, 6 do
+		local stripe = if i % 2 == 0 then Color3.fromRGB(230, 50, 50) else Color3.new(1, 1, 1)
+		local part = block(Vector3.new(3, 0.5, 8), (shopCF * CFrame.new(-9 + i * 3, 12, -0.5)).Position, stripe, shop, Enum.Material.Fabric)
+		part.CFrame *= CFrame.Angles(math.rad(-12), 0, 0)
+	end
+	local shopSign = sign("WEAPON SHOP", (shopCF * CFrame.new(0, 14.5, 1.5)).Position, Color3.fromRGB(255, 220, 80), shop)
+	shopSign.Size = Vector3.new(18, 4, 1)
+	for i, index in { 1, 5, 8, 12, 17, 20 } do
+		local display = WeaponModels.build(index, shopCF * CFrame.new(-7.5 + (i - 1) * 3, 4.5, 0) * CFrame.Angles(0, math.rad(90), 0), true)
+		display.Parent = shop
+	end
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "WeaponShop"
+	prompt.ActionText = "Open Shop"
+	prompt.ObjectText = "Weapons"
+	prompt.MaxActivationDistance = 14
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = counter
+
 	-- Parcelas (bases): 6 en fila
 	local plotCFrames = {}
 	for i = 1, Config.PLOTS do
 		local x = -140 + (i - 1) * 56
-		plotCFrames[i] = CFrame.new(x, 0, -65)
+		plotCFrames[i] = CFrame.new(x, 0, -70)
 	end
 	return plotCFrames
 end

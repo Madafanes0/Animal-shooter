@@ -9,6 +9,7 @@ C.NUM_EPOCHS = 20
 C.MAX_DIST = C.ZONE_LEN * C.NUM_EPOCHS - 6
 C.SHOT_COOLDOWN = 3
 C.PLOTS = 6
+C.HELD_MAX = 25 -- animales cargados sin colocar
 
 C.Rarities = {
 	{ name = "Common", color = Color3.fromRGB(200, 200, 200), weight = 60, mult = 1, scale = 1 },

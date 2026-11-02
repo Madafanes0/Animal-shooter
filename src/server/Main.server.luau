@@ -5,10 +5,10 @@ local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
-local Beasts = require(ReplicatedStorage.Shared.Beasts)
 local Map = require(script.Parent.Map)
+local Assets = require(script.Parent.Assets)
 local Tiles = require(ReplicatedStorage.Shared.Tiles)
-local WeaponModels = require(ReplicatedStorage.Shared.WeaponModels)
+local Models = require(ReplicatedStorage.Shared.Models)
 
 local remotes = Instance.new("Folder")
 remotes.Name = "Remotes"
@@ -40,6 +40,7 @@ type Data = {
 	stableLevel: number,
 	trainerLevel: number,
 	animals: { number },
+	held: { number },
 	discovered: { [string]: boolean },
 	kills: number,
 }
@@ -50,6 +51,7 @@ local plotModels: { [number]: Model } = {}
 local lastShot: { [Player]: number } = {}
 local lastTrain: { [Player]: number } = {}
 local rng = Random.new()
+local giveHeld: (Player) -> ()
 
 local function defaultData(): Data
 	return {
@@ -60,6 +62,7 @@ local function defaultData(): Data
 		stableLevel = 0,
 		trainerLevel = 0,
 		animals = {},
+		held = {},
 		discovered = {},
 		kills = 0,
 	}
@@ -87,6 +90,7 @@ local function push(plr: Player)
 		stableLevel = d.stableLevel,
 		trainerLevel = d.trainerLevel,
 		animals = d.animals,
+		held = d.held,
 		discovered = d.discovered,
 		income = income(d),
 		kills = d.kills,
@@ -131,25 +135,28 @@ local function fence(model: Model, a: Vector3, b: Vector3)
 	end
 end
 
+-- Corral en coordenadas locales de la parcela
+local PEN_Z, PEN_HW, PEN_HD = -12, 25, 20
+
 local function buildPlot(i: number): Model
 	local m = Instance.new("Model")
 	m.Name = "Plot" .. i
 	local cf = plotCFrames[i]
-	local plotFloor = plotPart(m, Vector3.new(52, 0.4, 64), cf * CFrame.new(0, 0.2, -12), Color3.fromRGB(120, 225, 80), Enum.Material.SmoothPlastic)
+	local plotFloor = plotPart(m, Vector3.new(56, 0.4, 56), cf * CFrame.new(0, 0.2, -14), Color3.fromRGB(120, 225, 80), Enum.Material.SmoothPlastic)
 	Tiles(plotFloor, { Enum.NormalId.Top }, 6)
 
-	-- Establo chico (corral al fondo, granero detrás)
-	local penCenter = cf * CFrame.new(0, 0, -22)
-	local hw, hd = 19, 16
+	-- Establo grande (corral al fondo, granero detrás)
+	local penCenter = cf * CFrame.new(0, 0, PEN_Z)
+	local hw, hd = PEN_HW, PEN_HD
 	local c = penCenter.Position
 	fence(m, c + Vector3.new(-hw, 0, -hd), c + Vector3.new(hw, 0, -hd))
 	fence(m, c + Vector3.new(-hw, 0, -hd), c + Vector3.new(-hw, 0, hd))
 	fence(m, c + Vector3.new(hw, 0, -hd), c + Vector3.new(hw, 0, hd))
 	fence(m, c + Vector3.new(-hw, 0, hd), c + Vector3.new(-5, 0, hd))
 	fence(m, c + Vector3.new(5, 0, hd), c + Vector3.new(hw, 0, hd))
-	local barn = plotPart(m, Vector3.new(22, 11, 6), penCenter * CFrame.new(0, 5.5, -hd - 4), Color3.fromRGB(190, 50, 45), Enum.Material.WoodPlanks)
+	local barn = plotPart(m, Vector3.new(26, 12, 6), penCenter * CFrame.new(0, 6, -hd - 4), Color3.fromRGB(190, 50, 45), Enum.Material.WoodPlanks)
 	barn.Name = "Barn"
-	plotPart(m, Vector3.new(24, 1.5, 8), penCenter * CFrame.new(0, 11.7, -hd - 4), Color3.fromRGB(240, 240, 240))
+	plotPart(m, Vector3.new(28, 1.5, 8), penCenter * CFrame.new(0, 12.7, -hd - 4), Color3.fromRGB(240, 240, 240))
 
 	local board = Instance.new("BillboardGui")
 	board.Name = "OwnerSign"
@@ -168,14 +175,19 @@ local function buildPlot(i: number): Model
 	t.Parent = board
 	board.Parent = barn
 
-	-- Entrenador de disparo justo afuera del establo, a un lado de la entrada
-	local pad = plotPart(m, Vector3.new(9, 0.6, 9), cf * CFrame.new(13, 0.5, 4), Color3.fromRGB(255, 200, 60), Enum.Material.SmoothPlastic)
+	-- Campo de tiro afuera de la zona verde, frente al establo (piso de tierra propio)
+	local range = plotPart(m, Vector3.new(22, 0.3, 20), cf * CFrame.new(15, 0.15, 26), Color3.fromRGB(200, 160, 110), Enum.Material.SmoothPlastic)
+	Tiles(range, { Enum.NormalId.Top }, 4)
+	for _, x in { 4, 26 } do
+		plotPart(m, Vector3.new(0.6, 1.2, 20), cf * CFrame.new(x, 0.6, 26), Color3.fromRGB(150, 90, 50), Enum.Material.Wood)
+	end
+	local pad = plotPart(m, Vector3.new(8, 0.5, 8), cf * CFrame.new(15, 0.45, 21), Color3.fromRGB(255, 200, 60), Enum.Material.SmoothPlastic)
 	pad.Name = "TrainerPad"
 	local target = Instance.new("Part")
 	target.Anchored = true
 	target.Shape = Enum.PartType.Cylinder
 	target.Size = Vector3.new(1, 7, 7)
-	target.CFrame = cf * CFrame.new(13, 4.5, 16) * CFrame.Angles(0, math.rad(90), 0)
+	target.CFrame = cf * CFrame.new(15, 4.5, 34) * CFrame.Angles(0, math.rad(90), 0)
 	target.Color = Color3.new(1, 1, 1)
 	target.Name = "TrainerTarget"
 	target.Parent = m
@@ -203,7 +215,7 @@ local function buildPlot(i: number): Model
 	tt.Parent = trainerSign
 	trainerSign.Parent = pad
 
-	local spawnPart = plotPart(m, Vector3.new(7, 0.4, 7), cf * CFrame.new(-12, 0.5, 6), Color3.fromRGB(80, 160, 255), Enum.Material.SmoothPlastic)
+	local spawnPart = plotPart(m, Vector3.new(7, 0.4, 7), cf * CFrame.new(-14, 0.3, 22), Color3.fromRGB(80, 160, 255), Enum.Material.SmoothPlastic)
 	spawnPart.Name = "Spawn"
 
 	local animals = Instance.new("Folder")
@@ -244,14 +256,14 @@ local function refreshStable(plr: Player)
 	end
 	local folder = plotModels[i].Animals
 	folder:ClearAllChildren()
-	local center = plotCFrames[i] * CFrame.new(0, 0.4, -22)
-	local cols = 8
+	local center = plotCFrames[i] * CFrame.new(0, 0.4, PEN_Z)
+	local cols = 10
 	for n, id in d.animals do
 		local col = (n - 1) % cols
 		local row = math.floor((n - 1) / cols)
-		local pos = center * CFrame.new(-15.4 + col * 4.4, 0, -13.5 + row * 3.8) * CFrame.Angles(0, math.rad(180), 0)
-		local beast = Beasts.build(id, pos, true)
-		beast:ScaleTo(0.6)
+		local pos = center * CFrame.new(-20.7 + col * 4.6, 0, -15 + row * 5.5) * CFrame.Angles(0, math.rad(180), 0)
+		local beast = Models.animal(id, pos, true)
+		beast:ScaleTo(beast:GetScale() * 0.6)
 		beast:SetAttribute("Owner", plr.UserId)
 		beast.Parent = folder
 	end
@@ -289,12 +301,44 @@ local function giveWeapon(plr: Player)
 			end
 		end
 	end
-	local tool = WeaponModels.tool(d.equipped)
+	local tool = Models.weaponTool(d.equipped)
 	tool.Parent = plr:FindFirstChildOfClass("Backpack")
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if hum then
 		hum:EquipTool(tool)
 	end
+end
+
+-- Un Tool por cada animal cargado (se re-crean todos cuando cambia la lista)
+giveHeld = function(plr: Player)
+	local d = data[plr]
+	local char = plr.Character
+	local backpack = plr:FindFirstChildOfClass("Backpack")
+	if not d or not char or not backpack then
+		return
+	end
+	for _, container in { backpack, char } do
+		for _, t in container:GetChildren() do
+			if t:IsA("Tool") and t:GetAttribute("AnimalId") then
+				t:Destroy()
+			end
+		end
+	end
+	for _, id in d.held do
+		Models.animalTool(id).Parent = backpack
+	end
+end
+
+-- ¿Está el jugador dentro de su propio corral?
+local function inOwnPen(plr: Player): boolean
+	local i = plotOf[plr]
+	local char = plr.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not i or not root then
+		return false
+	end
+	local p = (plotCFrames[i] * CFrame.new(0, 0, PEN_Z)):PointToObjectSpace(root.Position)
+	return math.abs(p.X) <= PEN_HW + 2 and math.abs(p.Z) <= PEN_HD + 2
 end
 
 ---------------------------------------------------------------- Disparo
@@ -320,23 +364,23 @@ ShootFn.OnServerInvoke = function(plr: Player)
 	if not inShootZone(plr) then
 		return { err = "Go to the Shoot Zone!" }
 	end
-	if #d.animals >= Config.stableCapacity(d.stableLevel) then
-		return { err = "Your stable is full! Sell or upgrade." }
+	if #d.held >= Config.HELD_MAX then
+		return { err = "Your hands are full! Place or sell animals." }
 	end
 	lastShot[plr] = os.clock()
 
 	local maxDist = Config.shotDistance(d.equipped, d.power)
 	local dist = maxDist * rng:NextNumber(0.8, 1)
 	local animal = Config.rollAnimal(dist, rng)
-	table.insert(d.animals, animal.id)
+	table.insert(d.held, animal.id)
 	d.discovered[tostring(animal.id)] = true
 	d.kills += 1
 	push(plr)
 
 	local root = (plr.Character :: Model):FindFirstChild("HumanoidRootPart") :: BasePart
 	local x = math.clamp(root.Position.X + rng:NextNumber(-10, 10), -Config.FIELD_WIDTH / 2 + 8, Config.FIELD_WIDTH / 2 - 8)
-	-- El animal aparece en el establo cuando termina la animación
-	task.delay(4, refreshStable, plr)
+	-- El animal llega a tu mano cuando termina la animación
+	task.delay(4, giveHeld, plr)
 	return { dist = dist, x = x, animal = animal.id, weapon = d.equipped }
 end
 
@@ -401,6 +445,53 @@ function handlers.UpgradeTrainer(plr: Player, d: Data)
 	d.money -= cost
 	d.trainerLevel += 1
 	notify(plr, "Trainer upgraded! +" .. Config.trainerGain(d.trainerLevel) .. " power per train", Color3.fromRGB(90, 255, 90))
+end
+
+-- Colocar en el establo un animal que traes en la mano
+function handlers.Place(plr: Player, d: Data, id: any)
+	local pos = table.find(d.held, tonumber(id) or -1)
+	if not pos then
+		return
+	end
+	if not inOwnPen(plr) then
+		notify(plr, "Go inside your stable to place it!")
+		return
+	end
+	if #d.animals >= Config.stableCapacity(d.stableLevel) then
+		notify(plr, "Your stable is full! Upgrade it or sell animals.")
+		return
+	end
+	local animalId = table.remove(d.held, pos) :: number
+	table.insert(d.animals, animalId)
+	notify(plr, "Placed " .. Config.Animals[animalId].name .. "!", Color3.fromRGB(90, 255, 90))
+	refreshStable(plr)
+	giveHeld(plr)
+end
+
+-- Sacar un animal del establo a la mano
+function handlers.PickUp(plr: Player, d: Data, slot: any)
+	slot = tonumber(slot)
+	local id = slot and d.animals[slot]
+	if not id or #d.held >= Config.HELD_MAX then
+		return
+	end
+	table.remove(d.animals, slot)
+	table.insert(d.held, id)
+	refreshStable(plr)
+	giveHeld(plr)
+end
+
+function handlers.SellHeld(plr: Player, d: Data, slot: any)
+	slot = tonumber(slot)
+	local id = slot and d.held[slot]
+	if not id then
+		return
+	end
+	table.remove(d.held, slot)
+	local value = Config.sellValue(Config.Animals[id])
+	d.money += value
+	notify(plr, "Sold " .. Config.Animals[id].name .. " for $" .. value, Color3.fromRGB(90, 255, 90))
+	giveHeld(plr)
 end
 
 function handlers.Sell(plr: Player, d: Data, slot: any)
@@ -486,10 +577,12 @@ Players.PlayerAdded:Connect(function(plr)
 		task.wait()
 		sendHome(plr)
 		giveWeapon(plr)
+		giveHeld(plr)
 	end)
 	if plr.Character then
 		sendHome(plr)
 		giveWeapon(plr)
+		giveHeld(plr)
 	end
 end)
 
@@ -528,5 +621,15 @@ task.spawn(function()
 				task.spawn(save, plr)
 			end
 		end
+	end
+end)
+
+-- Cuando cargan los modelos de Blender se rehacen la tienda, los establos y lo que traen en la mano
+Assets.start(function()
+	Map.refreshShop()
+	for _, plr in Players:GetPlayers() do
+		refreshStable(plr)
+		giveWeapon(plr)
+		giveHeld(plr)
 	end
 end)

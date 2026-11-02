@@ -8,7 +8,7 @@
       "StarterPlayerScripts": { "Client": { "$path": "src/client" } },
       "$properties": { "CameraMaxZoomDistance": 60 }
     },
-    "Lighting": { "$properties": { "Technology": "Future", "ClockTime": 13 } },
+    "Lighting": { "$properties": { "Technology": "Future", "ClockTime": 12, "GlobalShadows": true, "Ambient": [0.55, 0.55, 0.55], "OutdoorAmbient": [0.65, 0.65, 0.65] } },
     "TextChatService": { "$properties": { "ChatVersion": "TextChatService" } }
   }
 }

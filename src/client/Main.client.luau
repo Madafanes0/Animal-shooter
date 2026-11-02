@@ -7,7 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
-local Beasts = require(ReplicatedStorage.Shared.Beasts)
+local Models = require(ReplicatedStorage.Shared.Models)
 local fmt = require(ReplicatedStorage.Shared.Format)
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 
@@ -254,18 +254,38 @@ local function renderStable()
 	upgrade("Trainer Lv" .. state.trainerLevel + 1, "$" .. fmt(Config.trainerUpgradeCost(state.trainerLevel)), 0.5, "UpgradeTrainer", state.trainerLevel >= Config.TRAINER_MAX_LEVEL)
 
 	grid.CellSize = UDim2.new(0.333, -6, 0, 110)
-	for slot, id in state.animals do
+	-- Primero los que traes en la mano, luego los colocados
+	for slot, id in state.held do
 		local a = Config.Animals[id]
 		local rar = Config.Rarities[a.rarity]
-		local f = card(slot, Color3.fromRGB(60, 60, 80))
+		local f = card(slot, Color3.fromRGB(80, 70, 50))
 		stroke(f, rar.color, 3)
-		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 4), Text = rar.name, TextColor3 = rar.color, ZIndex = 8 })
+		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 4), Text = "IN HAND · " .. rar.name, TextColor3 = rar.color, ZIndex = 8 })
 		text(f, { Size = UDim2.new(1, -10, 0, 22), Position = UDim2.fromOffset(5, 22), Text = a.name, ZIndex = 8 })
 		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 46), Text = "$" .. fmt(a.income) .. "/s", TextColor3 = Color3.fromRGB(90, 255, 90), ZIndex = 8 })
 		local b = button(f, "Sell $" .. fmt(Config.sellValue(a)), Color3.fromRGB(200, 60, 60), UDim2.new(1, -16, 0, 30), UDim2.new(0, 8, 1, -36))
 		b.ZIndex = 8
 		b.Activated:Connect(function()
+			action("SellHeld", slot)
+		end)
+	end
+	for slot, id in state.animals do
+		local a = Config.Animals[id]
+		local rar = Config.Rarities[a.rarity]
+		local f = card(100 + slot, Color3.fromRGB(60, 60, 80))
+		stroke(f, rar.color, 3)
+		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 4), Text = rar.name, TextColor3 = rar.color, ZIndex = 8 })
+		text(f, { Size = UDim2.new(1, -10, 0, 22), Position = UDim2.fromOffset(5, 22), Text = a.name, ZIndex = 8 })
+		text(f, { Size = UDim2.new(1, -10, 0, 18), Position = UDim2.fromOffset(5, 46), Text = "$" .. fmt(a.income) .. "/s", TextColor3 = Color3.fromRGB(90, 255, 90), ZIndex = 8 })
+		local b = button(f, "Sell $" .. fmt(Config.sellValue(a)), Color3.fromRGB(200, 60, 60), UDim2.new(0.5, -10, 0, 30), UDim2.new(0, 8, 1, -36))
+		b.ZIndex = 8
+		b.Activated:Connect(function()
 			action("Sell", slot)
+		end)
+		local pick = button(f, "Pick up", Color3.fromRGB(40, 170, 230), UDim2.new(0.5, -10, 0, 30), UDim2.new(0.5, 2, 1, -36))
+		pick.ZIndex = 8
+		pick.Activated:Connect(function()
+			action("PickUp", slot)
 		end)
 	end
 end
@@ -343,7 +363,7 @@ local function onState()
 	local reach = Config.shotDistance(state.equipped, state.power)
 	info.Text = w.name .. "\nReach: Epoch " .. Config.epochAt(reach) .. " · Stable " .. #state.animals .. "/" .. Config.stableCapacity(state.stableLevel)
 	-- El dinero sube cada segundo; sólo redibuja el panel si cambió algo más
-	local key = HttpService:JSONEncode({ state.owned, state.equipped, state.animals, state.stableLevel, state.trainerLevel, state.discovered, currentPanel == "Shop" and math.floor(state.money) or 0 })
+	local key = HttpService:JSONEncode({ state.owned, state.equipped, state.animals, state.held, state.stableLevel, state.trainerLevel, state.discovered, currentPanel == "Shop" and math.floor(state.money) or 0 })
 	if key ~= lastPanelKey then
 		lastPanelKey = key
 		renderPanel()
@@ -510,9 +530,11 @@ local function playShot(res)
 	if humanoid then
 		humanoid.WalkSpeed = 0
 		humanoid.JumpPower = 0
-		local tool = player.Backpack:FindFirstChildWhichIsA("Tool")
-		if tool and not char:FindFirstChildWhichIsA("Tool") then
-			humanoid:EquipTool(tool)
+		-- Siempre dispara con el arma en la mano (aunque traigas un animal)
+		for _, tool in player.Backpack:GetChildren() do
+			if tool:IsA("Tool") and tool:GetAttribute("WeaponIndex") then
+				humanoid:EquipTool(tool)
+			end
 		end
 	end
 	shootBtn.Visible = false
@@ -589,14 +611,15 @@ local function playShot(res)
 		camera.FieldOfView = 85 - alpha * 25
 		-- "De repente" aparece el animal cuando la bala va llegando
 		if alpha > 0.75 and not beast then
-			local b = Beasts.build(res.animal, CFrame.new(landPos.X, 0, landPos.Z + 3), false)
+			local b = Models.animal(res.animal, CFrame.new(landPos.X, 0, landPos.Z + 3), false)
 			b.Parent = workspace
-			b:ScaleTo(0.05)
+			local full = b:GetScale()
+			b:ScaleTo(full * 0.05)
 			beast = b
 			task.spawn(function()
 				for i = 1, 8 do
 					if b.Parent then
-						b:ScaleTo(i / 8)
+						b:ScaleTo(full * i / 8)
 					end
 					task.wait(0.02)
 				end
@@ -705,6 +728,11 @@ local function watchTools(char: Model)
 	char.ChildAdded:Connect(function(child)
 		if child:IsA("Tool") and child:GetAttribute("WeaponIndex") then
 			child.Activated:Connect(shoot)
+		elseif child:IsA("Tool") and child:GetAttribute("AnimalId") then
+			-- Click con el animal en la mano: colocarlo en tu establo
+			child.Activated:Connect(function()
+				action("Place", child:GetAttribute("AnimalId"))
+			end)
 		end
 	end)
 end
@@ -730,6 +758,8 @@ RunService.Heartbeat:Connect(function()
 	shootBtn.Visible = inZone
 	if inZone then
 		hint.Text = "Press SHOOT (or F) to hunt a beast!"
+	elseif state and #state.held > 0 then
+		hint.Text = "Equip your animal and click inside your stable to place it"
 	elseif state and #state.animals == 0 then
 		hint.Text = "Walk forward to the Shoot Zone"
 	else

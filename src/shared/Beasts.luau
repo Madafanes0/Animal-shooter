@@ -215,7 +215,7 @@ function Beasts.build(animalId: number, cf: CFrame, withLabel: boolean?): Model
 			t.BackgroundTransparency = 1
 			t.Size = UDim2.new(1, 0, 0, size)
 			t.Position = UDim2.fromOffset(0, y)
-			t.Font = Enum.Font.LuckiestGuy
+			t.FontFace = Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Heavy)
 			t.TextSize = size
 			t.TextColor3 = color
 			t.TextStrokeTransparency = 0

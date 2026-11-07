@@ -12,6 +12,32 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Models = require(ReplicatedStorage.Shared.Models)
 local fmt = require(ReplicatedStorage.Shared.Format)
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local ContentProvider = game:GetService("ContentProvider")
+
+-- Precarga las mallas y texturas de los modelos de Blender conforme el servidor los deja listos;
+-- si no, al primer disparo el animal salía gris y luego se pintaba
+task.spawn(function()
+	local assets = ReplicatedStorage:WaitForChild("Assets")
+	local pending: { Instance } = {}
+	local function queue(folder: Instance)
+		for _, m in folder:GetChildren() do
+			table.insert(pending, m)
+		end
+		folder.ChildAdded:Connect(function(m)
+			table.insert(pending, m)
+		end)
+	end
+	queue(assets:WaitForChild("Animals"))
+	queue(assets:WaitForChild("Weapons"))
+	while true do
+		if #pending > 0 then
+			local batch = pending
+			pending = {}
+			pcall(ContentProvider.PreloadAsync, ContentProvider, batch)
+		end
+		task.wait(1)
+	end
+end)
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -440,14 +466,13 @@ local function inShootZone(): boolean
 	return math.abs(p.X) <= Config.FIELD_WIDTH / 2 and p.Z > -16 and p.Z < 16
 end
 
-local function banner(a, rar, variant: number)
+local function banner(a, rar, variant: number, entry: number)
 	local f = Instance.new("Frame")
 	f.Size = UDim2.new(0.7, 0, 0, 110)
 	f.Position = UDim2.new(0.15, 0, 0.12, 0)
 	f.BackgroundTransparency = 1
 	f.ZIndex = 30
 	f.Parent = gui
-	local entry = Config.entry(a.id, variant)
 	local top = if variant > 0 then Config.Variants[variant].name:upper() .. " · " .. rar.name:upper() else rar.name:upper()
 	text(f, { Size = UDim2.new(1, 0, 0.35, 0), Text = top, TextColor3 = if variant > 0 then Config.Variants[variant].color else rar.color, ZIndex = 30 })
 	text(f, { Size = UDim2.new(1, 0, 0.4, 0), Position = UDim2.fromScale(0, 0.35), Text = "You hunted a " .. Config.entryName(entry) .. "!", ZIndex = 30 })
@@ -709,6 +734,7 @@ local function playShot(res)
 		local facing = CFrame.Angles(0, math.atan2(-walkDir.X, -walkDir.Z), 0)
 		local b = Models.animal(res.animal, CFrame.new(from) * facing, false)
 		b.Parent = workspace
+		pcall(ContentProvider.PreloadAsync, ContentProvider, { b })
 		beast = b
 		walker = { model = b, from = from, to = stand, facing = facing, scale = b:GetScale() }
 	end
@@ -759,7 +785,7 @@ local function playShot(res)
 		camera.CFrame = shake(hitCam, 1)
 		task.wait()
 	end
-	banner(a, rar, variant)
+	banner(a, rar, variant, res.animal)
 
 	-- El animal parpadea en rojo y se desvanece, de pie
 	if beast then
@@ -1040,7 +1066,7 @@ local function rebuildHotbar()
 		local color = "Dark"
 		if entry then
 			local a, v = Config.decode(entry)
-			color = if v == 1 then "Gold" elseif v == 2 then "Cyan" elseif v == 3 then "Rainbow" elseif a.rarity >= 5 then "Orange" elseif a.rarity >= 4 then "Purple" elseif a.rarity >= 3 then "Blue" else "Dark"
+			color = if v == 1 then "Gold" elseif v == 2 then "Cyan" elseif v == 3 then "Rainbow" elseif v == 4 then "Silver" elseif a.rarity >= 5 then "Orange" elseif a.rarity >= 4 then "Purple" elseif a.rarity >= 3 then "Blue" else "Dark"
 		end
 		local slot = Theme.new("TextButton", { Name = "Slot" .. i, Size = UDim2.fromOffset(SLOT, SLOT), Text = "", LayoutOrder = i, Parent = hotbar })
 		Kit.face(slot, if equipped then "Lime" else color, { Stroke = if equipped then 4 else 3 })

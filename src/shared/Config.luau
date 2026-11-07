@@ -128,33 +128,74 @@ end
 C.Variants = {
 	[0] = { name = "", mult = 1, chance = 1 },
 	{ name = "Golden", mult = 2, chance = 1 / 25, color = Color3.fromRGB(255, 200, 40) },
-	{ name = "Diamond", mult = 5, chance = 1 / 150, color = Color3.fromRGB(130, 230, 255) },
+	{ name = "Diamond", mult = 6, chance = 1 / 250, color = Color3.fromRGB(130, 230, 255) },
 	{ name = "Rainbow", mult = 12, chance = 1 / 1000, color = Color3.fromRGB(255, 90, 220) },
+	{ name = "Platinum", mult = 3.5, chance = 1 / 80, color = Color3.fromRGB(225, 230, 240) },
+}
+-- Orden de tirada: de la más rara a la más común (los IDs no van en orden porque Platinum llegó después)
+local variantOrder = {}
+for v in C.Variants do
+	if v > 0 then
+		table.insert(variantOrder, v)
+	end
+end
+table.sort(variantOrder, function(x, y)
+	return C.Variants[x].chance < C.Variants[y].chance
+end)
+
+-- Tamaños: cambian qué tan grande se ve en el establo y su ingreso
+C.Sizes = {
+	[0] = { name = "", scale = 1, mult = 1, chance = 1 },
+	{ name = "Mini", scale = 0.55, mult = 1.25, chance = 1 / 10 },
+	{ name = "Big", scale = 1.45, mult = 1.6, chance = 1 / 12 },
+	{ name = "Giant", scale = 2.1, mult = 3, chance = 1 / 45 },
+	{ name = "Colossal", scale = 3.2, mult = 8, chance = 1 / 250 },
 }
 
--- Un animal guardado es un número: variante * 1000 + id
-function C.entry(id: number, variant: number): number
-	return variant * 1000 + id
+-- Un animal guardado es un número: tamaño * 10000 + variante * 1000 + id
+function C.entry(id: number, variant: number, size: number?): number
+	return (size or 0) * 10000 + variant * 1000 + id
 end
 function C.decode(entry: number)
-	local variant = math.floor(entry / 1000)
-	return C.Animals[entry % 1000], variant
+	local size = math.floor(entry / 10000)
+	local variant = math.floor(entry / 1000) % 10
+	return C.Animals[entry % 1000], variant, size
 end
 function C.entryName(entry: number): string
-	local a, v = C.decode(entry)
-	return if v > 0 then C.Variants[v].name .. " " .. a.name else a.name
+	local a, v, size = C.decode(entry)
+	local parts = {}
+	if size > 0 then
+		table.insert(parts, C.Sizes[size].name)
+	end
+	if v > 0 then
+		table.insert(parts, C.Variants[v].name)
+	end
+	table.insert(parts, a.name)
+	return table.concat(parts, " ")
 end
 function C.entryIncome(entry: number): number
-	local a, v = C.decode(entry)
-	return a.income * C.Variants[v].mult
+	local a, v, size = C.decode(entry)
+	return math.floor(a.income * C.Variants[v].mult * C.Sizes[size].mult + 0.5)
 end
 
 -- Devuelve la variante (la más rara primero) y su probabilidad
 function C.rollVariant(rng: Random, luckMult: number)
-	for v = #C.Variants, 1, -1 do
+	for _, v in variantOrder do
 		local chance = math.min(C.Variants[v].chance * luckMult, 0.5)
 		if rng:NextNumber() < chance then
 			return v, chance
+		end
+	end
+	return 0, 1
+end
+
+-- Tamaño: la suerte sólo ayuda a los grandes (Mini sale igual)
+function C.rollSize(rng: Random, luckMult: number)
+	for _, size in { 4, 3, 2, 1 } do
+		local chance = C.Sizes[size].chance * (if size >= 2 then luckMult else 1)
+		chance = math.min(chance, 0.4)
+		if rng:NextNumber() < chance then
+			return size, chance
 		end
 	end
 	return 0, 1
@@ -194,9 +235,12 @@ function C.trainerUpgradeCost(level: number): number
 	return math.floor(200 * 1.9 ^ level)
 end
 
--- El poder suma alcance en porcentaje: cada 2 de poder = +1 %
+-- El poder suma alcance con rendimiento decreciente: 100 = +24 %, 10K = +48 %, 1M = +72 %, 1B = +108 %
+function C.powerMult(power: number): number
+	return 1 + math.log10(1 + math.max(power, 0)) * 0.12
+end
 function C.shotDistance(weaponIndex: number, power: number): number
-	return math.min(C.Weapons[weaponIndex].range * (1 + power / 200), C.MAX_DIST)
+	return math.min(C.Weapons[weaponIndex].range * C.powerMult(power), C.MAX_DIST)
 end
 
 function C.epochAt(dist: number): number
@@ -232,7 +276,7 @@ end
 
 -- Recompensa por descubrir los 5 animales de un mundo (época)
 function C.worldReward(epoch: number)
-	return { money = math.floor(2000 * 2.3 ^ (epoch - 1)), power = 25 * epoch }
+	return { money = math.floor(3000 * 2.6 ^ (epoch - 1)), power = math.floor(100 * 3 ^ (epoch - 1)) }
 end
 
 function C.sellValue(entry: number): number

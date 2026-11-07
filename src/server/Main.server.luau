@@ -25,6 +25,14 @@ Notify.Name = "Notify"
 Notify.Parent = remotes
 remotes.Parent = ReplicatedStorage
 
+-- La plantilla de Studio trae un SpawnLocation y un Baseplate que quedan en la zona de tiro
+for _, name in { "SpawnLocation", "Baseplate" } do
+	local extra = workspace:FindFirstChild(name)
+	if extra then
+		extra:Destroy()
+	end
+end
+
 local plotCFrames = Map.build()
 local plotsFolder = Instance.new("Folder")
 plotsFolder.Name = "Plots"
@@ -165,13 +173,13 @@ local function fence(model: Model, a: Vector3, b: Vector3)
 end
 
 -- Corral en coordenadas locales de la parcela
-local PEN_Z, PEN_HW, PEN_HD = -14, 32, 26
+local PEN_Z, PEN_HW, PEN_HD = -26, 35, 35
 
 local function buildPlot(i: number): Model
 	local m = Instance.new("Model")
 	m.Name = "Plot" .. i
 	local cf = plotCFrames[i]
-	local plotFloor = plotPart(m, Vector3.new(72, 0.4, 64), cf * CFrame.new(0, 0.2, -16), Color3.fromRGB(120, 225, 80), Enum.Material.SmoothPlastic)
+	local plotFloor = plotPart(m, Vector3.new(78, 0.4, 82), cf * CFrame.new(0, 0.2, -28), Color3.fromRGB(120, 225, 80), Enum.Material.SmoothPlastic)
 	Tiles(plotFloor, { Enum.NormalId.Top }, 6)
 
 	-- Establo grande (corral al fondo, granero detrás)
@@ -198,7 +206,7 @@ local function buildPlot(i: number): Model
 	t.Name = "Text"
 	t.Size = UDim2.fromScale(1, 1)
 	t.BackgroundTransparency = 1
-	t.Font = Enum.Font.LuckiestGuy
+	t.FontFace = Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Heavy)
 	t.TextScaled = true
 	t.TextColor3 = Color3.new(1, 1, 1)
 	t.TextStrokeTransparency = 0
@@ -308,11 +316,11 @@ local function refreshStable(plr: Player)
 	local folder = plotModels[i].Animals
 	folder:ClearAllChildren()
 	local center = plotCFrames[i] * CFrame.new(0, 0.4, PEN_Z)
-	local cols = 12
+	local cols = 10
 	for n, id in d.animals do
 		local col = (n - 1) % cols
 		local row = math.floor((n - 1) / cols)
-		local pos = center * CFrame.new(-27.5 + col * 5, 0, -20 + row * 8) * CFrame.Angles(0, math.rad(180), 0)
+		local pos = center * CFrame.new(-29.25 + col * 6.5, 0, -27 + row * 9) * CFrame.Angles(0, math.rad(180), 0)
 		local beast = Models.animal(id, pos, true)
 		beast:ScaleTo(beast:GetScale() * 0.75)
 		beast:SetAttribute("Owner", plr.UserId)
@@ -425,7 +433,8 @@ ShootFn.OnServerInvoke = function(plr: Player)
 	local luck = luckMult(d)
 	local animal, chance = Config.rollAnimal(dist, rng, luck)
 	local variant, vChance = Config.rollVariant(rng, luck)
-	local entry = Config.entry(animal.id, variant)
+	local size, sChance = Config.rollSize(rng, luck)
+	local entry = Config.entry(animal.id, variant, size)
 	table.insert(d.held, entry)
 	d.discovered[tostring(animal.id)] = true
 	d.kills += 1
@@ -436,7 +445,7 @@ ShootFn.OnServerInvoke = function(plr: Player)
 	-- El animal llega a tu mano cuando termina la animación
 	task.delay(4, giveHeld, plr)
 	-- "1 en N" para que el cliente sepa si toca la animación de criatura rara
-	return { dist = dist, x = x, animal = entry, weapon = d.equipped, oneIn = math.floor(1 / (chance * vChance)) }
+	return { dist = dist, x = x, animal = entry, weapon = d.equipped, oneIn = math.floor(1 / (chance * vChance * sChance)) }
 end
 
 ---------------------------------------------------------------- Acciones

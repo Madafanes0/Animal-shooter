@@ -49,6 +49,8 @@ local function applyVariant(m: Model, variant: number)
 		paint(m, v.color, Enum.Material.Foil)
 	elseif variant == 2 then
 		paint(m, v.color, Enum.Material.Glass, 0.15)
+	elseif variant == 4 then
+		paint(m, v.color, Enum.Material.Metal)
 	else
 		paint(m, v.color, Enum.Material.Neon)
 		CollectionService:AddTag(m, "Rainbow") -- el cliente le cambia el color
@@ -68,9 +70,46 @@ local function applyVariant(m: Model, variant: number)
 	end
 end
 
--- Animal (entrada con variante) con los pies en `cf`, mirando hacia -Z de `cf`
+-- Aura de los legendarios (estilo Dragon Ball): llamas de color que suben alrededor y una luz
+local function addAura(m: Model, a)
+	local root = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+	if not root then
+		return
+	end
+	local hue = (a.epoch * 0.13) % 1
+	local color = Color3.fromHSV(hue, 0.75, 1)
+	local function emitter(rate: number, size: number, speed: number, light: number)
+		local e = Instance.new("ParticleEmitter")
+		e.Name = "Aura"
+		e.Texture = "rbxasset://textures/particles/fire_main.dds"
+		e.Shape = Enum.ParticleEmitterShape.Box
+		e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
+		e.EmissionDirection = Enum.NormalId.Top
+		e.Color = ColorSequence.new(Color3.fromHSV(hue, 0.35, 1), color)
+		e.LightEmission = light
+		e.LightInfluence = 0
+		e.Rate = rate
+		e.Lifetime = NumberRange.new(0.5, 0.9)
+		e.Speed = NumberRange.new(speed * 0.6, speed)
+		e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, size), NumberSequenceKeypoint.new(1, 0) })
+		e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 1) })
+		e.SpreadAngle = Vector2.new(8, 8)
+		e.Acceleration = Vector3.new(0, 6, 0)
+		e.Parent = root
+	end
+	emitter(45, 2.4, 7, 1)
+	emitter(20, 1.2, 12, 0.6)
+	local light = Instance.new("PointLight")
+	light.Name = "AuraLight"
+	light.Color = color
+	light.Range = 18
+	light.Brightness = 2.5
+	light.Parent = root
+end
+
+-- Animal (entrada con variante y tamaño) con los pies en `cf`, mirando hacia -Z de `cf`
 function Models.animal(entry: number, cf: CFrame, withLabel: boolean?): Model
-	local a, variant = Config.decode(entry)
+	local a, variant, size = Config.decode(entry)
 	local m = asset("Animals", a.id)
 	if m then
 		setAnchored(m, true)
@@ -79,7 +118,13 @@ function Models.animal(entry: number, cf: CFrame, withLabel: boolean?): Model
 		m = Beasts.build(a.id, cf, false)
 	end
 	local model = m :: Model
+	if size > 0 then
+		model:ScaleTo(model:GetScale() * Config.Sizes[size].scale)
+	end
 	applyVariant(model, variant)
+	if a.rarity >= 5 then
+		addAura(model, a)
+	end
 	if withLabel then
 		local rar = Config.Rarities[a.rarity]
 		local _, size = model:GetBoundingBox()
@@ -93,7 +138,7 @@ function Models.animal(entry: number, cf: CFrame, withLabel: boolean?): Model
 			t.BackgroundTransparency = 1
 			t.Size = UDim2.new(1, 0, 0, sz)
 			t.Position = UDim2.fromOffset(0, y)
-			t.Font = Enum.Font.LuckiestGuy
+			t.FontFace = Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Heavy)
 			t.TextSize = sz
 			t.TextColor3 = color
 			t.TextStrokeTransparency = 0

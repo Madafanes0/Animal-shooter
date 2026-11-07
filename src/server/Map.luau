@@ -46,15 +46,23 @@ local function sign(text: string, pos: Vector3, color: Color3, parent: Instance?
 	local board = block(Vector3.new(30, 7, 1), pos, Color3.fromRGB(110, 70, 40), parent, Enum.Material.Wood)
 	local gui = Instance.new("SurfaceGui")
 	gui.Face = Enum.NormalId.Back
+	-- PixelsPerStud: el lienzo toma la forma del letrero (con FixedSize el texto salía estirado)
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	gui.PixelsPerStud = 30
 	local t = Instance.new("TextLabel")
 	t.Size = UDim2.fromScale(1, 1)
 	t.BackgroundTransparency = 1
-	t.Font = Enum.Font.LuckiestGuy
+	t.FontFace = Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Heavy)
 	t.TextScaled = true
 	t.TextColor3 = color
 	t.TextStrokeTransparency = 0
 	t.Text = text
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0.04, 0)
+	pad.PaddingRight = UDim.new(0.04, 0)
+	pad.PaddingTop = UDim.new(0.12, 0)
+	pad.PaddingBottom = UDim.new(0.12, 0)
+	pad.Parent = t
 	t.Parent = gui
 	gui.Parent = board
 	-- texto también por delante para quien lo vea desde el otro lado
@@ -114,8 +122,8 @@ function Map.build(): { CFrame }
 	local grass = Color3.fromRGB(95, 210, 60)
 
 	-- Zona de bases (todo cerrado con muro a cuadros, abierto sólo hacia la línea de tiro)
-	local baseHalf = 250
-	local back, front = -172, -10
+	local baseHalf = 262
+	local back, front = -178, -10
 	floor(Vector3.new(baseHalf * 2, 2, front - back), Vector3.new(0, -1, (back + front) / 2), grass)
 	checkerWall(Vector3.new(-baseHalf, 0, back), Vector3.new(-baseHalf, 0, front), 40)
 	checkerWall(Vector3.new(baseHalf, 0, back), Vector3.new(baseHalf, 0, front), 40)
@@ -258,8 +266,8 @@ function Map.build(): { CFrame }
 	-- Parcelas (bases): 6 en fila
 	local plotCFrames = {}
 	for i = 1, Config.PLOTS do
-		local x = -200 + (i - 1) * 80
-		plotCFrames[i] = CFrame.new(x, 0, -118)
+		local x = -210 + (i - 1) * 84
+		plotCFrames[i] = CFrame.new(x, 0, -100)
 	end
 	return plotCFrames
 end

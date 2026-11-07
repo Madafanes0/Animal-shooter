@@ -23,6 +23,7 @@ local shooting = false
 
 local Theme = require(script.Parent.UI.Theme)
 local Kit = require(script.Parent.UI.Kit)
+local Preview = require(script.Parent.UI.Preview)
 local C = Theme.Colors
 
 local gui = Theme.screen("KillABeastUI")
@@ -70,7 +71,7 @@ local incomeLabel = Kit.label({ Text = "+$0/s", TextSize = 46, Size = UDim2.from
 local hint = Kit.label({ Text = "", TextSize = 24, Size = UDim2.fromOffset(640, 30), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 58), Scaled = true, Parent = gui })
 local info = Kit.label({ Text = "", TextSize = 22, Size = UDim2.fromOffset(320, 56), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 6), XAlign = Enum.TextXAlignment.Right, Scaled = true, Parent = gui })
 
-local shootBtn = Kit.button({ Name = "Shoot", Text = "SHOOT!", Color = "Red", Size = UDim2.fromOffset(230, 80), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -16), TextSize = 40, Parent = gui })
+local shootBtn = Kit.button({ Name = "Shoot", Text = "SHOOT!", Color = "Red", Size = UDim2.fromOffset(230, 76), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -112), TextSize = 40, Parent = gui })
 shootBtn.Visible = false
 Kit.button({ Name = "Home", Text = "Base", Color = "Blue", Size = UDim2.fromOffset(120, 56), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -12, 1, -12), TextSize = 28, Parent = gui, OnClick = function()
 	action("Home")
@@ -139,10 +140,11 @@ end
 
 local function clearPanel()
 	for _, c in scroll:GetChildren() do
-		if c:IsA("GuiObject") then
+		if c:IsA("GuiObject") or c.Name == "IndexList" then
 			c:Destroy()
 		end
 	end
+	grid.Parent = scroll
 	headerButtons:ClearAllChildren()
 	Theme.list(headerButtons, 8, true, Enum.HorizontalAlignment.Right)
 end
@@ -209,6 +211,12 @@ local function renderStable()
 		local rar = Config.Rarities[a.rarity]
 		local vColor = if v > 0 then Config.Variants[v].color else nil
 		local card = itemCard(order, vColor or rar.color, Config.entryName(entry), vColor, (if inHand then "IN HAND · " else "") .. rar.name, "$" .. fmt(Config.entryIncome(entry)) .. "/s")
+		for _, l in card:GetChildren() do
+			if l:IsA("TextLabel") and l.Name ~= "CardTitle" then
+				l.Size = UDim2.new(1, -96, 0, l.Size.Y.Offset)
+			end
+		end
+		Preview.animal(entry, UDim2.fromOffset(78, 78), card, false, 7).Position = UDim2.new(1, -84, 0, 4)
 		if inHand then
 			cardButton(card, "Sell $" .. fmt(Config.sellValue(entry)), "Red", UDim2.new(1, -24, 0, 34), UDim2.new(0, 12, 1, -40), function()
 				action("SellHeld", order)
@@ -231,23 +239,54 @@ local function renderStable()
 	end
 end
 
+-- Index por mundos: cada época con sus 5 animales (vista 3D o silueta) y su recompensa al completarla
 local function renderIndex()
 	local found = 0
 	for _ in state.discovered do
 		found += 1
 	end
 	panelTitle.Text = string.format("Index  %d/%d", found, #Config.AnimalOrder)
-	grid.CellSize = UDim2.new(0.2, -8, 0, 84)
-	for n, id in Config.AnimalOrder do
-		local a = Config.Animals[id]
-		local rar = Config.Rarities[a.rarity]
-		local known = state.discovered[tostring(id)]
-		local card = Kit.card({ Size = UDim2.fromOffset(100, 84), LayoutOrder = n, Parent = scroll })
-		card.ZIndex = 6
-		Theme.stroke(card, 2, rar.color)
-		Kit.label({ Text = Config.Epochs[a.epoch].name, TextSize = 14, Size = UDim2.new(1, -8, 0, 18), Position = UDim2.fromOffset(4, 4), Scaled = true, Font = Theme.FontBold, Color = C.TextDim, ZIndex = 7, Parent = card })
-		Kit.label({ Text = if known then a.name else "???", TextSize = 20, Size = UDim2.new(1, -8, 0, 34), Position = UDim2.fromOffset(4, 22), Scaled = true, ZIndex = 7, Parent = card })
-		Kit.label({ Text = rar.name, TextSize = 15, Size = UDim2.new(1, -8, 0, 18), Position = UDim2.fromOffset(4, 60), Scaled = true, Color = rar.color, ZIndex = 7, Parent = card })
+	grid.Parent = nil
+	local list = Theme.list(scroll, 16)
+	list.Name = "IndexList"
+	for e, epoch in Config.Epochs do
+		local count = 0
+		for _, a in epoch.animals do
+			if state.discovered[tostring(a.id)] then
+				count += 1
+			end
+		end
+		local section = Kit.card({ Size = UDim2.new(1, -8, 0, 200), LayoutOrder = e, Parent = scroll })
+		section.ZIndex = 6
+		local outline = section:FindFirstChildOfClass("UIStroke")
+		if outline then
+			outline.Color = epoch.ground
+			outline.Thickness = 2.5
+		end
+		local band = Theme.new("Frame", { Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = epoch.ground, BackgroundTransparency = 0.25, ZIndex = 6, Parent = section })
+		Theme.corner(band, 4)
+		Kit.label({ Text = string.format("World %d · %s", e, epoch.name), TextSize = 26, Size = UDim2.new(0.55, 0, 1, -6), Position = UDim2.fromOffset(12, 3), XAlign = Enum.TextXAlignment.Left, Scaled = true, ZIndex = 7, Parent = band })
+		Kit.label({ Text = count .. "/5", TextSize = 24, Size = UDim2.fromOffset(70, 34), Position = UDim2.new(0.55, 0, 0, 5), Scaled = true, Color = if count == 5 then C.Money else C.White, ZIndex = 7, Parent = band })
+		local reward = Config.worldReward(e)
+		local claimed = state.claimedWorlds and state.claimedWorlds[tostring(e)]
+		local rewardText = if claimed then "Claimed" else "$" .. fmt(reward.money) .. " + " .. reward.power .. " Power"
+		Kit.button({ Text = rewardText, Color = if claimed then "Gray" elseif count == 5 then "Gold" else "Dark", Size = UDim2.fromOffset(230, 36), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), TextSize = 20, ZIndex = 8, Parent = band, OnClick = function()
+			if not claimed then
+				action("ClaimWorld", e)
+			end
+		end })
+		local row = Theme.new("Frame", { Size = UDim2.new(1, -16, 0, 144), Position = UDim2.fromOffset(8, 50), ZIndex = 6, Parent = section })
+		Theme.new("UIGridLayout", { CellSize = UDim2.new(0.2, -8, 1, 0), CellPadding = UDim2.fromOffset(10, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = row })
+		for r, a in epoch.animals do
+			local rar = Config.Rarities[a.rarity]
+			local known = state.discovered[tostring(a.id)]
+			local cell = Theme.new("Frame", { LayoutOrder = r, BackgroundColor3 = C.Card, BackgroundTransparency = 0.3, ZIndex = 6, Parent = row })
+			Theme.corner(cell, 6)
+			Theme.stroke(cell, 2, rar.color)
+			Preview.animal(a.id, UDim2.new(1, -8, 1, -46), cell, not known, 7).Position = UDim2.fromOffset(4, 2)
+			Kit.label({ Text = if known then a.name else "???", TextSize = 18, Size = UDim2.new(1, -8, 0, 22), Position = UDim2.new(0, 4, 1, -44), Scaled = true, ZIndex = 8, Parent = cell })
+			Kit.label({ Text = rar.name, TextSize = 15, Size = UDim2.new(1, -8, 0, 18), Position = UDim2.new(0, 4, 1, -22), Scaled = true, Color = rar.color, ZIndex = 8, Parent = cell })
+		end
 	end
 end
 
@@ -316,6 +355,42 @@ local function powerPop(gain: number)
 	task.delay(0.85, t.Destroy, t)
 end
 
+-- Entrenando: una piedrita vuela de tu personaje a una de las dianas
+local function trainShot()
+	local plots = workspace:FindFirstChild("Plots")
+	local plot = plots and plots:FindFirstChild("Plot" .. tostring(player:GetAttribute("Plot")))
+	local targets = plot and plot:FindFirstChild("Targets")
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not targets or not hrp then
+		return
+	end
+	local list = targets:GetChildren()
+	local target = list[math.random(1, #list)] :: BasePart
+	local from = hrp.Position + Vector3.new(0, 1.5, 0)
+	local to = target.Position + Vector3.new(0, math.random() - 0.5, math.random() - 0.5)
+	hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(to.X, hrp.Position.Y, to.Z))
+	local rock = Instance.new("Part")
+	rock.Shape = Enum.PartType.Ball
+	rock.Size = Vector3.new(0.5, 0.5, 0.5)
+	rock.Color = Color3.fromRGB(140, 140, 140)
+	rock.Material = Enum.Material.Slate
+	rock.Anchored = true
+	rock.CanCollide = false
+	rock.CanQuery = false
+	rock.Position = from
+	rock.Parent = workspace
+	local tween = TweenService:Create(rock, TweenInfo.new(0.22, Enum.EasingStyle.Linear), { Position = to })
+	tween:Play()
+	tween.Completed:Connect(function()
+		rock.Size = Vector3.new(1.4, 1.4, 1.4)
+		rock.Material = Enum.Material.Neon
+		rock.Color = Color3.fromRGB(255, 220, 80)
+		TweenService:Create(rock, TweenInfo.new(0.2), { Size = Vector3.new(2.5, 2.5, 2.5), Transparency = 1 }):Play()
+		task.delay(0.25, rock.Destroy, rock)
+	end)
+end
+
 local function onState()
 	local raw = player:GetAttribute("State")
 	if not raw then
@@ -324,6 +399,9 @@ local function onState()
 	state = HttpService:JSONDecode(raw)
 	if lastPower and state.power > lastPower then
 		powerPop(state.power - lastPower)
+		if player:GetAttribute("Training") then
+			trainShot()
+		end
 	end
 	lastPower = state.power
 	moneyLabel.Text = "$" .. fmt(state.money)
@@ -337,7 +415,7 @@ local function onState()
 	end
 	info.Text = w.name .. luckText .. "\nReach: Epoch " .. Config.epochAt(reach) .. " · Stable " .. #state.animals .. "/" .. Config.stableCapacity(state.stableLevel)
 	-- El dinero sube cada segundo; sólo redibuja el panel si cambió algo más
-	local key = HttpService:JSONEncode({ state.owned, state.equipped, state.animals, state.held, state.passes, state.stableLevel, state.trainerLevel, state.discovered, currentPanel == "Shop" and math.floor(state.money) or 0 })
+	local key = HttpService:JSONEncode({ state.owned, state.equipped, state.animals, state.held, state.passes, state.claimedWorlds, state.stableLevel, state.trainerLevel, state.discovered, currentPanel == "Shop" and math.floor(state.money) or 0 })
 	if key ~= lastPanelKey then
 		lastPanelKey = key
 		renderPanel()
@@ -621,6 +699,19 @@ local function playShot(res)
 		t0 = os.clock()
 	end
 	camera.FieldOfView = 85
+	-- Animal caminando (si no entró ya con la animación de ultra raro)
+	local walker = nil
+	if not beast then
+		local stand = Vector3.new(landPos.X, 0, landPos.Z + 3)
+		local side = if landPos.X > 0 then -1 else 1
+		local from = stand + Vector3.new(side * 16, 0, 4)
+		local walkDir = (stand - from).Unit
+		local facing = CFrame.Angles(0, math.atan2(-walkDir.X, -walkDir.Z), 0)
+		local b = Models.animal(res.animal, CFrame.new(from) * facing, false)
+		b.Parent = workspace
+		beast = b
+		walker = { model = b, from = from, to = stand, facing = facing, scale = b:GetScale() }
+	end
 	local dir = (landPos - startPos).Unit
 	t0 = os.clock()
 	while true do
@@ -632,21 +723,12 @@ local function playShot(res)
 		jitterLines(1)
 		camera.CFrame = shake(CFrame.lookAt(pos - dir * 9 + Vector3.new(0, 2.5, 0), pos + dir * 8), 0.15)
 		camera.FieldOfView = 85 - alpha * 25
-		-- "De repente" aparece el animal cuando la bala va llegando
-		if alpha > 0.75 and not beast then
-			local b = Models.animal(res.animal, CFrame.new(landPos.X, 0, landPos.Z + 3), false)
-			b.Parent = workspace
-			local full = b:GetScale()
-			b:ScaleTo(full * 0.05)
-			beast = b
-			task.spawn(function()
-				for i = 1, 8 do
-					if b.Parent then
-						b:ScaleTo(full * i / 8)
-					end
-					task.wait(0.02)
-				end
-			end)
+		-- El animal viene caminando hacia donde cae la bala y le pega justo al llegar
+		if walker then
+			local t = math.clamp((alpha - 0.15) / 0.85, 0, 1)
+			local p = walker.from:Lerp(walker.to, t)
+			local step = math.abs(math.sin(os.clock() * 14)) * 0.35 * walker.scale
+			walker.model:PivotTo(CFrame.new(p + Vector3.new(0, step, 0)) * walker.facing)
 		end
 		if alpha >= 1 then
 			break
@@ -873,3 +955,150 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 	end
 end)
+
+-- Inventario propio (en vez del de Roblox): arma primero y luego los animales, con su vista 3D
+local StarterGui = game:GetService("StarterGui")
+task.spawn(function()
+	for _ = 1, 20 do
+		if pcall(StarterGui.SetCoreGuiEnabled, StarterGui, Enum.CoreGuiType.Backpack, false) then
+			break
+		end
+		task.wait(0.5)
+	end
+end)
+
+local SLOT = 84
+local hotbar = Kit.scroll({
+	Name = "Hotbar",
+	Size = UDim2.fromOffset(9 * (SLOT + 8) + 8, SLOT + 18),
+	AnchorPoint = Vector2.new(0.5, 1),
+	Position = UDim2.new(0.5, 0, 1, -4),
+	ScrollingDirection = Enum.ScrollingDirection.X,
+	AutomaticCanvasSize = Enum.AutomaticSize.X,
+	ScrollBarThickness = 5,
+	Parent = gui,
+})
+Theme.list(hotbar, 8, true, Enum.HorizontalAlignment.Center)
+Theme.padding(hotbar, 6, 4)
+side:GetPropertyChangedSignal("Visible"):Connect(function()
+	hotbar.Visible = side.Visible
+end)
+
+local function myTools(): { Tool }
+	local list = {}
+	local char = player.Character
+	for _, container in { char, player:FindFirstChildOfClass("Backpack") } do
+		if container then
+			for _, t in container:GetChildren() do
+				if t:IsA("Tool") then
+					table.insert(list, t)
+				end
+			end
+		end
+	end
+	-- arma primero; luego por orden de nombre para que no brinquen al equipar
+	table.sort(list, function(a, b)
+		local wa, wb = a:GetAttribute("WeaponIndex") ~= nil, b:GetAttribute("WeaponIndex") ~= nil
+		if wa ~= wb then
+			return wa
+		end
+		local ea, eb = a:GetAttribute("AnimalId") or 0, b:GetAttribute("AnimalId") or 0
+		if ea ~= eb then
+			return ea > eb
+		end
+		return a:GetDebugId() < b:GetDebugId()
+	end)
+	return list
+end
+
+local slotTools: { Tool } = {}
+local function equipSlot(i: number)
+	local tool = slotTools[i]
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if not tool or not hum or shooting then
+		return
+	end
+	if tool.Parent == player.Character then
+		hum:UnequipTools()
+	else
+		hum:EquipTool(tool)
+	end
+end
+
+local rebuildQueued = false
+local function rebuildHotbar()
+	rebuildQueued = false
+	for _, c in hotbar:GetChildren() do
+		if c:IsA("GuiObject") then
+			c:Destroy()
+		end
+	end
+	slotTools = myTools()
+	for i, tool in slotTools do
+		local equipped = tool.Parent == player.Character
+		local entry = tool:GetAttribute("AnimalId")
+		local color = "Dark"
+		if entry then
+			local a, v = Config.decode(entry)
+			color = if v == 1 then "Gold" elseif v == 2 then "Cyan" elseif v == 3 then "Rainbow" elseif a.rarity >= 5 then "Orange" elseif a.rarity >= 4 then "Purple" elseif a.rarity >= 3 then "Blue" else "Dark"
+		end
+		local slot = Theme.new("TextButton", { Name = "Slot" .. i, Size = UDim2.fromOffset(SLOT, SLOT), Text = "", LayoutOrder = i, Parent = hotbar })
+		Kit.face(slot, if equipped then "Lime" else color, { Stroke = if equipped then 4 else 3 })
+		Kit.press(slot)
+		Preview.tool(tool, UDim2.fromScale(0.92, 0.78), slot, 3).Position = UDim2.fromScale(0.04, 0.02)
+		if i <= 9 then
+			Kit.label({ Text = tostring(i), TextSize = 20, Size = UDim2.fromOffset(20, 22), Position = UDim2.fromOffset(4, 2), XAlign = Enum.TextXAlignment.Left, ZIndex = 4, Parent = slot })
+		end
+		Kit.label({ Text = tool.Name, TextSize = 13, Size = UDim2.new(1, -6, 0, 18), Position = UDim2.new(0, 3, 1, -20), Scaled = true, Font = Theme.FontBold, ZIndex = 4, Parent = slot })
+		slot.Activated:Connect(function()
+			Kit.sound(Kit.CLICK, 0.4)
+			equipSlot(i)
+		end)
+	end
+end
+
+local function queueRebuild()
+	if not rebuildQueued then
+		rebuildQueued = true
+		task.defer(rebuildHotbar)
+	end
+end
+
+local function watchContainer(container: Instance)
+	container.ChildAdded:Connect(function(c)
+		if c:IsA("Tool") then
+			queueRebuild()
+		end
+	end)
+	container.ChildRemoved:Connect(function(c)
+		if c:IsA("Tool") then
+			queueRebuild()
+		end
+	end)
+	queueRebuild()
+end
+if player.Character then
+	watchContainer(player.Character)
+end
+player.CharacterAdded:Connect(watchContainer)
+player.ChildAdded:Connect(function(c)
+	if c:IsA("Backpack") then
+		watchContainer(c)
+	end
+end)
+local backpack = player:FindFirstChildOfClass("Backpack")
+if backpack then
+	watchContainer(backpack)
+end
+
+local NUMBER_KEYS = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five, Enum.KeyCode.Six, Enum.KeyCode.Seven, Enum.KeyCode.Eight, Enum.KeyCode.Nine }
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then
+		return
+	end
+	local i = table.find(NUMBER_KEYS, input.KeyCode)
+	if i then
+		equipSlot(i)
+	end
+end)
+

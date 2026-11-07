@@ -47,6 +47,7 @@ type Data = {
 	kills: number,
 	passes: { [string]: boolean },
 	luckUntil: number,
+	claimedWorlds: { [string]: boolean },
 }
 
 local data: { [Player]: Data } = {}
@@ -70,6 +71,7 @@ local function defaultData(): Data
 		kills = 0,
 		passes = {},
 		luckUntil = 0,
+		claimedWorlds = {},
 	}
 end
 
@@ -117,6 +119,7 @@ local function push(plr: Player)
 		income = income(d),
 		kills = d.kills,
 		passes = d.passes,
+		claimedWorlds = d.claimedWorlds,
 		luckLeft = math.max(0, d.luckUntil - os.time()),
 		luck = luckMult(d),
 		heldMax = heldMax(d),
@@ -203,34 +206,74 @@ local function buildPlot(i: number): Model
 	t.Parent = board
 	board.Parent = signBoard
 
-	-- Campo de tiro afuera de la zona verde, frente al establo (piso de tierra propio)
-	local range = plotPart(m, Vector3.new(22, 0.3, 20), cf * CFrame.new(18, 0.15, 28), Color3.fromRGB(200, 160, 110), Enum.Material.SmoothPlastic)
-	Tiles(range, { Enum.NormalId.Top }, 4)
-	for _, x in { 7, 29 } do
-		plotPart(m, Vector3.new(0.6, 1.2, 20), cf * CFrame.new(x, 0.6, 28), Color3.fromRGB(150, 90, 50), Enum.Material.Wood)
+	-- Campo de entrenamiento afuera de la zona verde: caseta con toldo, cerca, 3 dianas y pacas de paja
+	local DIRT = Color3.fromRGB(205, 165, 115)
+	local WOODC = Color3.fromRGB(120, 72, 40)
+	local DARKW = Color3.fromRGB(85, 50, 30)
+	local ALL = { Enum.NormalId.Top, Enum.NormalId.Front, Enum.NormalId.Back, Enum.NormalId.Left, Enum.NormalId.Right }
+	local function studPart(size: Vector3, at: CFrame, color: Color3, studs: number?): Part
+		local p = plotPart(m, size, cf * at, color, Enum.Material.SmoothPlastic)
+		Tiles(p, ALL, studs or 2)
+		return p
 	end
-	local pad = plotPart(m, Vector3.new(8, 0.5, 8), cf * CFrame.new(18, 0.45, 23), Color3.fromRGB(255, 200, 60), Enum.Material.SmoothPlastic)
+	local range = studPart(Vector3.new(22, 0.3, 22), CFrame.new(18, 0.15, 28), DIRT, 4)
+	range.Name = "TrainerRange"
+	local rc = (cf * CFrame.new(18, 0, 28)).Position
+	fence(m, rc + Vector3.new(-11, 0, -11), rc + Vector3.new(-11, 0, 11))
+	fence(m, rc + Vector3.new(11, 0, -11), rc + Vector3.new(11, 0, 11))
+	fence(m, rc + Vector3.new(-11, 0, 11), rc + Vector3.new(11, 0, 11))
+
+	-- Caseta: tarima, 4 postes y toldo a rayas rojo/blanco
+	local pad = studPart(Vector3.new(9, 0.8, 7), CFrame.new(18, 0.4, 21), Color3.fromRGB(160, 100, 55))
 	pad.Name = "TrainerPad"
-	local target = Instance.new("Part")
-	target.Anchored = true
-	target.Shape = Enum.PartType.Cylinder
-	target.Size = Vector3.new(1, 7, 7)
-	target.CFrame = cf * CFrame.new(18, 4.5, 36) * CFrame.Angles(0, math.rad(90), 0)
-	target.Color = Color3.new(1, 1, 1)
-	target.Name = "TrainerTarget"
-	target.Parent = m
-	local bull = target:Clone()
-	bull.Size = Vector3.new(1.1, 2.5, 2.5)
-	bull.Color = Color3.fromRGB(230, 40, 40)
-	bull.Name = "Bullseye"
-	bull.Parent = m
+	for _, x in { 13.8, 22.2 } do
+		for _, z in { 17.8, 24.2 } do
+			studPart(Vector3.new(0.9, 9, 0.9), CFrame.new(x, 4.8, z), DARKW)
+		end
+	end
+	for k = 0, 5 do
+		local stripe = if k % 2 == 0 then Color3.fromRGB(220, 50, 50) else Color3.new(1, 1, 1)
+		studPart(Vector3.new(1.75, 0.6, 8.4), CFrame.new(13.6 + k * 1.75, 9.5, 21) * CFrame.Angles(math.rad(8), 0, 0), stripe)
+	end
+	studPart(Vector3.new(10.6, 0.5, 0.6), CFrame.new(18, 9.2, 24.9), WOODC)
+	-- Mostrador bajito al frente de la caseta
+	studPart(Vector3.new(8.4, 2.2, 0.8), CFrame.new(18, 1.9, 24.4), WOODC)
+	studPart(Vector3.new(8.8, 0.3, 1.2), CFrame.new(18, 3.1, 24.4), DARKW)
+
+	-- 3 dianas en caballetes a distintas distancias
+	local targets = Instance.new("Folder")
+	targets.Name = "Targets"
+	targets.Parent = m
+	for k, spot in { Vector3.new(12, 0, 31), Vector3.new(18, 0, 35), Vector3.new(24, 0, 31) } do
+		local base = CFrame.new(spot)
+		studPart(Vector3.new(0.6, 4, 0.6), base * CFrame.new(-1.4, 2, 0.6), WOODC)
+		studPart(Vector3.new(0.6, 4, 0.6), base * CFrame.new(1.4, 2, 0.6), WOODC)
+		studPart(Vector3.new(3.6, 0.4, 0.5), base * CFrame.new(0, 2.6, 0.6), DARKW)
+		for ring, info in { { 5, Color3.new(1, 1, 1) }, { 3.6, Color3.fromRGB(230, 40, 40) }, { 2.2, Color3.new(1, 1, 1) }, { 0.9, Color3.fromRGB(230, 40, 40) } } do
+			local disc = Instance.new("Part")
+			disc.Shape = Enum.PartType.Cylinder
+			disc.Anchored = true
+			disc.Size = Vector3.new(0.4 + ring * 0.08, info[1], info[1])
+			disc.CFrame = cf * base * CFrame.new(0, 5.2, 0) * CFrame.Angles(0, math.rad(90), 0)
+			disc.Color = info[2]
+			disc.Material = Enum.Material.SmoothPlastic
+			disc.Name = if ring == 1 then "TrainerTarget" else "Ring"
+			disc.Parent = if ring == 1 then targets else m
+		end
+		-- paca de paja detrás
+		studPart(Vector3.new(4, 2.4, 2.4), base * CFrame.new(0, 1.2, 2.6), Color3.fromRGB(235, 200, 90))
+		if k == 2 then
+			studPart(Vector3.new(4, 2.4, 2.4), base * CFrame.new(0, 3.6, 2.6), Color3.fromRGB(225, 190, 80))
+		end
+	end
+
 	local trainerSign = Instance.new("BillboardGui")
 	trainerSign.Size = UDim2.fromOffset(170, 28)
-	trainerSign.StudsOffset = Vector3.new(0, 9, 0)
-	trainerSign.MaxDistance = 60
+	trainerSign.StudsOffset = Vector3.new(0, 10.5, 0)
+	trainerSign.MaxDistance = 70
 	trainerSign.Adornee = pad
 	local tt = t:Clone()
-	tt.Text = "STAND HERE TO TRAIN"
+	tt.Text = "TRAINING · STAND INSIDE"
 	tt.TextColor3 = Color3.fromRGB(255, 220, 80)
 	tt.Parent = trainerSign
 	trainerSign.Parent = pad
@@ -271,7 +314,7 @@ local function refreshStable(plr: Player)
 		local row = math.floor((n - 1) / cols)
 		local pos = center * CFrame.new(-27.5 + col * 5, 0, -20 + row * 8) * CFrame.Angles(0, math.rad(180), 0)
 		local beast = Models.animal(id, pos, true)
-		beast:ScaleTo(beast:GetScale() * 0.6)
+		beast:ScaleTo(beast:GetScale() * 0.75)
 		beast:SetAttribute("Owner", plr.UserId)
 		beast.Parent = folder
 	end
@@ -461,6 +504,26 @@ function handlers.UpgradeTrainer(plr: Player, d: Data)
 	d.money -= cost
 	d.trainerLevel += 1
 	notify(plr, "Trainer upgraded! +" .. Config.trainerGain(d.trainerLevel) .. " power per train", Color3.fromRGB(90, 255, 90))
+end
+
+-- Reclamar la recompensa de un mundo con sus 5 animales descubiertos
+function handlers.ClaimWorld(plr: Player, d: Data, epochArg: any)
+	local e = tonumber(epochArg)
+	local epoch = e and Config.Epochs[e]
+	if not epoch or d.claimedWorlds[tostring(e)] then
+		return
+	end
+	for _, a in epoch.animals do
+		if not d.discovered[tostring(a.id)] then
+			notify(plr, "Discover all 5 beasts of " .. epoch.name .. " first!")
+			return
+		end
+	end
+	local reward = Config.worldReward(e :: number)
+	d.claimedWorlds[tostring(e)] = true
+	d.money += reward.money
+	d.power += reward.power
+	notify(plr, epoch.name .. " complete! +$" .. reward.money .. " · +" .. reward.power .. " Power", Color3.fromRGB(255, 220, 80))
 end
 
 -- Colocar en el establo un animal que traes en la mano
@@ -736,7 +799,8 @@ local function onTrainer(plr: Player): boolean
 		return false
 	end
 	local p = plotCFrames[i]:PointToObjectSpace(root.Position)
-	return p.X > 7 and p.X < 29 and p.Z > 18 and p.Z < 38
+	-- dentro de la caseta (tarima)
+	return p.X > 13 and p.X < 23 and p.Z > 17 and p.Z < 25.5
 end
 
 task.spawn(function()

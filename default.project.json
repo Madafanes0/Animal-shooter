@@ -2,13 +2,65 @@
   "name": "KillABeast",
   "tree": {
     "$className": "DataModel",
-    "ReplicatedStorage": { "Shared": { "$path": "src/shared" } },
-    "ServerScriptService": { "Server": { "$path": "src/server" } },
-    "StarterPlayer": {
-      "StarterPlayerScripts": { "Client": { "$path": "src/client" } },
-      "$properties": { "CameraMaxZoomDistance": 60, "CharacterWalkSpeed": 30, "CharacterUseJumpPower": true, "CharacterJumpPower": 55 }
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/shared"
+      }
     },
-    "Lighting": { "$properties": { "Technology": "Future", "ClockTime": 12, "GlobalShadows": true, "Ambient": [0.55, 0.55, 0.55], "OutdoorAmbient": [0.65, 0.65, 0.65], "EnvironmentSpecularScale": 0, "EnvironmentDiffuseScale": 0.5 } },
-    "TextChatService": { "$properties": { "ChatVersion": "TextChatService" } }
+    "ServerScriptService": {
+      "Server": {
+        "$path": "src/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Client": {
+          "$path": "src/client"
+        }
+      },
+      "$properties": {
+        "CameraMaxZoomDistance": 60,
+        "CharacterWalkSpeed": 30,
+        "CharacterUseJumpPower": true,
+        "CharacterJumpPower": 55
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "Technology": "Future",
+        "ClockTime": 12,
+        "GlobalShadows": true,
+        "Ambient": [
+          0.55,
+          0.55,
+          0.55
+        ],
+        "OutdoorAmbient": [
+          0.65,
+          0.65,
+          0.65
+        ],
+        "EnvironmentSpecularScale": 0,
+        "EnvironmentDiffuseScale": 0.5
+      },
+      "StarrySky": {
+        "$className": "Sky",
+        "$properties": {
+          "SkyboxBk": "rbxassetid://79714410285746",
+          "SkyboxDn": "rbxassetid://102808099219021",
+          "SkyboxFt": "rbxassetid://125867691821684",
+          "SkyboxLf": "rbxassetid://91258126179935",
+          "SkyboxRt": "rbxassetid://79836771290082",
+          "SkyboxUp": "rbxassetid://101541407519337",
+          "CelestialBodiesShown": false,
+          "StarCount": 0
+        }
+      }
+    },
+    "TextChatService": {
+      "$properties": {
+        "ChatVersion": "TextChatService"
+      }
+    }
   }
 }

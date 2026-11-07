@@ -1,4 +1,5 @@
 -- Genera el mapa: zona de bases, línea de tiro y el corredor de 20 épocas
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Tiles = require(ReplicatedStorage.Shared.Tiles)
@@ -22,7 +23,7 @@ function Map.refreshShop()
 	local displays = Instance.new("Folder")
 	displays.Name = "Displays"
 	for i, index in { 1, 5, 8, 12, 17, 20 } do
-		local display = Models.weapon(index, shopDisplayCF * CFrame.new(-7.5 + (i - 1) * 3, 4.6, 0) * CFrame.Angles(0, math.rad(90), 0))
+		local display = Models.weapon(index, shopDisplayCF * CFrame.new(-8 + (i - 1) * 3.2, 5.4, 0) * CFrame.Angles(0, math.rad(90), 0))
 		display.Parent = displays
 	end
 	displays.Parent = shop
@@ -149,22 +150,40 @@ function Map.build(): { CFrame }
 	local endZ = Config.FIELD_START + Config.NUM_EPOCHS * Config.ZONE_LEN
 	block(Vector3.new(Config.FIELD_WIDTH + 8, 60, 4), Vector3.new(0, 30, endZ + 2), Color3.fromRGB(30, 10, 50))
 
-	-- Tiendas junto a la línea de tiro: armas a la izquierda, Robux a la derecha
-	local function stall(name: string, cf: CFrame, title: string, stripeA: Color3, stripeB: Color3, titleColor: Color3, promptText: string): Model
+	-- Tiendas junto a la línea de tiro (armas a la izquierda, Robux a la derecha): puesto de mercado con toldo
+	-- de bloques a rayas, postes y mostrador de madera con studs y un vendedor detrás. El frente mira al pasillo.
+	local DARK_WOOD = Color3.fromRGB(92, 58, 40)
+	local TOP_WOOD = Color3.fromRGB(78, 74, 78)
+	local function stall(name: string, cf: CFrame, title: string, stripeA: Color3, stripeB: Color3, titleColor: Color3, promptText: string, shirt: Color3): Model
 		local shop = Instance.new("Model")
 		shop.Name = name
 		shop.Parent = folder
-		local counter = block(Vector3.new(20, 3.5, 4), (cf * CFrame.new(0, 1.75, 0)).Position, Color3.fromRGB(150, 90, 50), shop, Enum.Material.WoodPlanks)
-		block(Vector3.new(21, 0.4, 5), (cf * CFrame.new(0, 3.7, 0)).Position, Color3.fromRGB(110, 65, 35), shop, Enum.Material.Wood)
-		for _, x in { -9.5, 9.5 } do
-			block(Vector3.new(1, 12, 1), (cf * CFrame.new(x, 6, 1.5)).Position, Color3.fromRGB(110, 65, 35), shop, Enum.Material.Wood)
+		local function piece(size: Vector3, at: CFrame, color: Color3, studs: number?): Part
+			local p = block(size, Vector3.zero, color, shop, Enum.Material.SmoothPlastic)
+			p.CFrame = cf * at
+			Tiles(p, { Enum.NormalId.Top, Enum.NormalId.Front, Enum.NormalId.Back, Enum.NormalId.Left, Enum.NormalId.Right, Enum.NormalId.Bottom }, studs or 2)
+			return p
 		end
-		for i = 0, 6 do
-			local part = block(Vector3.new(3, 0.5, 8), (cf * CFrame.new(-9 + i * 3, 12, -0.5)).Position, if i % 2 == 0 then stripeA else stripeB, shop, Enum.Material.Fabric)
-			part.CFrame *= CFrame.Angles(math.rad(-12), 0, 0)
+		for _, x in { -10, 10 } do
+			for _, z in { -3.6, 3.6 } do
+				piece(Vector3.new(1.3, 13, 1.3), CFrame.new(x, 6.5, z), DARK_WOOD)
+			end
 		end
-		local board = sign(title, (cf * CFrame.new(0, 14.5, 1.5)).Position, titleColor, shop)
-		board.Size = Vector3.new(18, 4, 1)
+		-- Toldo: franjas de bloques con su "pestaña" al frente
+		for k = 0, 7 do
+			local color = if k % 2 == 0 then stripeA else stripeB
+			local x = -9.1 + k * 2.6
+			piece(Vector3.new(2.6, 1.1, 10.4), CFrame.new(x, 13.4, 0), color)
+			piece(Vector3.new(2.6, 1.2, 0.9), CFrame.new(x, 12.5, -5.4), color)
+		end
+		piece(Vector3.new(21.4, 0.6, 0.8), CFrame.new(0, 12.6, 3.6), DARK_WOOD)
+		-- Mostrador: dos vigas con studs y la tabla de arriba
+		local counter = piece(Vector3.new(21, 1.7, 0.9), CFrame.new(0, 1.3, -3.6), DARK_WOOD)
+		piece(Vector3.new(21, 1.7, 0.9), CFrame.new(0, 3.2, -3.6), DARK_WOOD)
+		piece(Vector3.new(22, 0.45, 2.6), CFrame.new(0, 4.3, -3.6), TOP_WOOD)
+		local board = sign(title, (cf * CFrame.new(0, 16.3, -4.6)).Position, titleColor, shop)
+		board.Size = Vector3.new(16, 3.6, 0.8)
+		board.CFrame = cf * CFrame.new(0, 16.3, -4.6)
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.Name = name
 		prompt.ActionText = promptText
@@ -172,15 +191,69 @@ function Map.build(): { CFrame }
 		prompt.MaxActivationDistance = 14
 		prompt.RequiresLineOfSight = false
 		prompt.Parent = counter
+		-- Vendedor con sombrero vaquero detrás del mostrador
+		task.spawn(function()
+			local ok, npc = pcall(function()
+				local desc = Instance.new("HumanoidDescription")
+				desc.HeadColor = Color3.fromRGB(234, 184, 146)
+				desc.LeftArmColor = desc.HeadColor
+				desc.RightArmColor = desc.HeadColor
+				desc.TorsoColor = shirt
+				desc.LeftLegColor = shirt
+				desc.RightLegColor = shirt
+				return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+			end)
+			if not ok or not npc then
+				return
+			end
+			npc.Name = "Shopkeeper"
+			local hum = npc:FindFirstChildOfClass("Humanoid")
+			if hum then
+				hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+			end
+			for _, d in npc:GetDescendants() do
+				if d:IsA("BasePart") then
+					d.Anchored = true
+				end
+			end
+			npc:PivotTo(cf * CFrame.new(0, 3, 0.4))
+			local head = npc:FindFirstChild("Head") :: BasePart?
+			if head then
+				local hatColor = Color3.fromRGB(120, 80, 45)
+				local brim = Instance.new("Part")
+				brim.Shape = Enum.PartType.Cylinder
+				brim.Size = Vector3.new(0.18, 2.6, 2.6)
+				brim.CFrame = head.CFrame * CFrame.new(0, 0.55, 0) * CFrame.Angles(0, 0, math.rad(90))
+				brim.Color = hatColor
+				brim.Anchored = true
+				brim.Parent = npc
+				local crown = Instance.new("Part")
+				crown.Size = Vector3.new(1.3, 0.75, 1.3)
+				crown.CFrame = head.CFrame * CFrame.new(0, 0.95, 0)
+				crown.Color = hatColor
+				crown.Anchored = true
+				crown.Parent = npc
+				local band = crown:Clone()
+				band.Size = Vector3.new(1.34, 0.18, 1.34)
+				band.CFrame = head.CFrame * CFrame.new(0, 0.7, 0)
+				band.Color = Color3.fromRGB(60, 40, 25)
+				band.Parent = npc
+			end
+			npc.Parent = shop
+		end)
 		return shop
 	end
-	shopDisplayCF = CFrame.new(-82, 0, -24)
-	stall("WeaponShop", shopDisplayCF, "WEAPON SHOP", Color3.fromRGB(230, 50, 50), Color3.new(1, 1, 1), Color3.fromRGB(255, 220, 80), "Open Shop")
+	local weaponCF = CFrame.lookAt(Vector3.new(-80, 0, -26), Vector3.new(0, 0, -26))
+	shopDisplayCF = weaponCF * CFrame.new(0, 0, -3.6)
+	stall("WeaponShop", weaponCF, "WEAPON SHOP", Color3.fromRGB(40, 120, 230), Color3.new(1, 1, 1), Color3.fromRGB(255, 220, 80), "Open Shop", Color3.fromRGB(50, 90, 160))
 	Map.refreshShop()
-	local robux = stall("RobuxShop", CFrame.new(82, 0, -24), "ROBUX SHOP", Color3.fromRGB(40, 200, 90), Color3.fromRGB(255, 210, 50), Color3.fromRGB(120, 255, 140), "Open Robux Shop")
-	-- Cofre dorado de adorno sobre el mostrador
-	block(Vector3.new(4, 2.4, 2.6), Vector3.new(82, 5.1, -24), Color3.fromRGB(255, 200, 40), robux, Enum.Material.Foil)
-	block(Vector3.new(4.2, 0.5, 2.8), Vector3.new(82, 6.4, -24), Color3.fromRGB(200, 120, 20), robux, Enum.Material.Metal)
+	local robuxCF = CFrame.lookAt(Vector3.new(80, 0, -26), Vector3.new(0, 0, -26))
+	local robux = stall("RobuxShop", robuxCF, "ROBUX SHOP", Color3.fromRGB(40, 200, 90), Color3.fromRGB(255, 210, 50), Color3.fromRGB(120, 255, 140), "Open Robux Shop", Color3.fromRGB(40, 140, 70))
+	-- Cofre dorado sobre el mostrador
+	local chest = block(Vector3.new(4, 2.4, 2.4), Vector3.zero, Color3.fromRGB(255, 200, 40), robux, Enum.Material.Foil)
+	chest.CFrame = robuxCF * CFrame.new(0, 5.7, -3.6)
+	local lid = block(Vector3.new(4.2, 0.5, 2.6), Vector3.zero, Color3.fromRGB(200, 120, 20), robux, Enum.Material.Metal)
+	lid.CFrame = robuxCF * CFrame.new(0, 7.1, -3.6)
 
 	-- Parcelas (bases): 6 en fila
 	local plotCFrames = {}

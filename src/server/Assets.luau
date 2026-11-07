@@ -9,10 +9,10 @@ local Assets = {}
 
 -- Posición de la empuñadura respecto al centro del arma, en fracción de su tamaño (sale de tools/blender/kab.py)
 local GRIPS = {
-	{ 0, -0.025, -0.271 }, { 0, 0.405, -0.227 }, { 0, 0, 0.38 }, { 0, 0, 0.319 }, { 0, 0, 0.402 },
-	{ 0, 0.253, 0.338 }, { 0, 0, 0.402 }, { 0, 0.191, 0.348 }, { 0, 0.185, 0.216 }, { 0, 0.185, 0.398 },
-	{ 0, 0.161, 0.368 }, { 0, 0.036, 0.201 }, { 0, 0.185, 0.175 }, { 0, 0.167, 0.209 }, { 0, 0.036, 0.254 },
-	{ 0, 0, 0.402 }, { 0, 0.159, 0.182 }, { 0, 0.036, 0.242 }, { 0, 0.027, 0.208 }, { 0, -0.009, 0.232 },
+	{ 0, -0.081, -0.344 }, { 0, 0.37, -0.192 }, { 0, -0.065, 0.311 }, { 0, -0.167, 0.317 }, { 0, 0, 0.236 },
+	{ 0, 0.205, 0.332 }, { 0, 0, 0.283 }, { 0, 0.166, 0.202 }, { 0, 0.145, 0.257 }, { 0, 0.145, 0.382 },
+	{ 0, 0.145, 0.354 }, { 0, 0.029, 0.239 }, { 0, 0.145, 0.217 }, { 0.091, 0.145, 0.239 }, { 0, 0.029, 0.287 },
+	{ 0, 0, 0.272 }, { 0, 0.136, 0.214 }, { 0, 0.029, 0.266 }, { 0, 0.029, 0.222 }, { 0, 0.001, 0.249 },
 }
 
 local function weaponLength(i: number): number
@@ -122,7 +122,7 @@ function Assets.start(onDone: () -> ())
 				return
 			end
 			local _, size = worldBounds(m)
-			m:ScaleTo(4.2 * Config.Rarities[a.rarity].scale / math.max(size.X, size.Y, size.Z))
+			m:ScaleTo(6.5 * Config.Rarities[a.rarity].scale / math.max(size.X, size.Y, size.Z))
 			-- Pivote en los pies, al centro
 			setRoot(m, function(s)
 				return Vector3.new(0, -s.Y / 2, 0)

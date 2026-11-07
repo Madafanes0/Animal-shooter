@@ -201,7 +201,7 @@ def stud_pixel(h, x, y, cell):
     return (r, g, b)
 
 
-def stud_box(hx, hy, hz, loc):
+def stud_box(hx, hy, hz, loc, stud=None):
     """Caja hecha de quads de ~STUD; cada quad con UV 0..1 (luego se pasa al cuadro de su color)."""
     import bmesh
     bm = bmesh.new()
@@ -210,8 +210,9 @@ def stud_box(hx, hy, hz, loc):
     faces = [(0, 1, 1, 2), (0, -1, 1, 2), (1, 1, 0, 2), (1, -1, 0, 2), (2, 1, 0, 1), (2, -1, 0, 1)]
     h = (hx, hy, hz)
     for (n, sgn, a, b) in faces:
-        na = max(1, round(2 * h[a] / STUD))
-        nb = max(1, round(2 * h[b] / STUD))
+        st = stud or STUD
+        na = max(1, round(2 * h[a] / st))
+        nb = max(1, round(2 * h[b] / st))
         for i in range(na):
             for j in range(nb):
                 corners = []
@@ -241,12 +242,13 @@ def stud_box(hx, hy, hz, loc):
 class B:
     """Junta piezas (primitivas) con color; al final se unen en un solo objeto con UV a la paleta."""
 
-    def __init__(self, name, blocky=False):
+    def __init__(self, name, blocky=False, stud=None):
         self.name = name
         self.objs = []
         self.colors = []
         # blocky: todas las piezas son cajas con studs (estilo Lego/voxel); cada cuadrito de la cara es un stud
         self.blocky = blocky
+        self.stud = stud
 
     def _color_index(self, h):
         h = h.lower()
@@ -262,7 +264,7 @@ class B:
                 hx, hy, hz = hx * 1.2, hy * 1.2, hz * 0.35
             elif kind == "cone":
                 hx, hy = hx * 0.75, hy * 0.75
-            o = stud_box(max(hx, 0.04), max(hy, 0.04), max(hz, 0.04), loc)
+            o = stud_box(max(hx, 0.02), max(hy, 0.02), max(hz, 0.02), loc, self.stud)
             o.rotation_euler = Euler([math.radians(r) for r in rot])
             bpy.ops.object.select_all(action="DESELECT")
             o.select_set(True)
@@ -1088,116 +1090,212 @@ def build_animal(name, legendary=None):
 WOOD, DWOOD, STEEL, DSTEEL = "#a0602e", "#6a3a1e", "#7a7e88", "#3a3c44"
 
 
-def w_grip(b, color=DWOOD):
-    b.box((0, 0, -0.35), (0.28, 0.32, 0.8), color, rot=(-12, 0, 0))
+# ------------------------------------------------------------------ armas (apuntan a -Y, empuñadura en el origen)
+WOOD, DWOOD, STEEL, DSTEEL = "#a8662e", "#6a3a1e", "#8a8e98", "#3a3c44"
+LEATHER, ROPE, GOLDC, RED = "#7a4a2a", "#e0c890", "#ffcc33", "#d83a2a"
+WEAPON_STUD = 0.1
+
+
+# Las armas apuntan a -Y; el origen es la empuñadura (donde va la mano)
+def w_grip(b, color=DWOOD, wrap=None, angle=-14):
+    b.box((0, 0.02, -0.32), (0.26, 0.34, 0.78), color, rot=(angle, 0, 0))
+    if wrap:
+        for z in (-0.1, -0.3, -0.5):
+            b.box((0, 0.02 - z * 0.24, z), (0.29, 0.37, 0.07), wrap, rot=(angle, 0, 0))
+    b.box((0, 0.1, -0.74), (0.3, 0.4, 0.1), shade(color, -0.3), rot=(angle, 0, 0))
+
+
+def w_trigger(b, metal=DSTEEL):
+    b.box((0, -0.32, -0.12), (0.06, 0.06, 0.2), metal)
+    b.box((0, -0.32, -0.27), (0.08, 0.5, 0.05), metal)
+    b.box((0, -0.55, -0.17), (0.08, 0.05, 0.22), metal)
+
+
+def w_arrow(b, y0, y1, z, shaft=WOOD, head=STEEL, fletch=RED):
+    b.box((0, (y0 + y1) / 2, z), (0.05, abs(y1 - y0), 0.05), shaft)
+    b.box((0, y1 - 0.08, z), (0.14, 0.16, 0.05), head)
+    b.box((0, y1 - 0.2, z), (0.08, 0.1, 0.04), head)
+    for dz in (-0.07, 0.07):
+        b.box((0, y0 + 0.12, z + dz), (0.03, 0.22, 0.08), fletch)
+    b.box((0, y0 + 0.02, z), (0.07, 0.05, 0.07), shade(shaft, -0.3))
+
+
+def w_bow(b, limb, k, grip_wrap=LEATHER, string=WHITE, arrow=True, gem=None):
+    # Arco curvo hecho con segmentos; el centro está en el origen (se agarra del centro)
+    b.box((0, 0, 0), (0.16, 0.2, 0.5), grip_wrap)
+    pts = [(0.25, 0.0), (0.55, -0.12), (0.85, -0.26), (1.1, -0.34), (1.3, -0.3)]
+    for sgn in (1, -1):
+        for (z0, y0), (z1, y1) in zip(pts, pts[1:]):
+            a = Vector((0, y0, sgn * z0 * k))
+            c = Vector((0, y1, sgn * z1 * k))
+            b.rod(a, c, 0.06, limb)
+        tip = Vector((0, pts[-1][1], sgn * pts[-1][0] * k))
+        b.box(tip + Vector((0, 0.02, sgn * 0.05)), (0.1, 0.1, 0.14), shade(limb, -0.35))
+        if gem:
+            b.box(Vector((0, -0.14, sgn * 0.7 * k)), (0.12, 0.08, 0.12), gem)
+    top = Vector((0, pts[-1][1] + 0.03, pts[-1][0] * k))
+    nock = Vector((0, 0.35, 0))
+    b.rod(top, nock, 0.012, string)
+    b.rod(nock, Vector((top.x, top.y, -top.z)), 0.012, string)
+    if arrow:
+        w_arrow(b, 0.38, -1.45 * k, 0.04)
+    b.box((0, -0.12, 0.27), (0.08, 0.06, 0.06), STEEL)  # apoya-flechas
+
+
+def w_gun(b, barrel, stock, metal, accent=None, scope=False, double=False, drum=False, harpoon=False, bipod=False,
+          neon=None, bulky=1.0, long_stock=True, mag=True, pump=False, coils=0, rails=False, cannon=False):
+    k = bulky
+    w_grip(b, stock)
+    w_trigger(b)
+    # cajón (receptor) con detalles
+    b.box((0, -0.4, 0.2), (0.3 * k, 1.0, 0.36 * k), metal)
+    b.box((0, -0.4, 0.4 * k), (0.22 * k, 0.9, 0.06), shade(metal, -0.25))
+    b.box((0.16 * k, -0.35, 0.22), (0.03, 0.4, 0.14), shade(metal, 0.25))  # ventana de expulsión
+    b.box((-0.16 * k, -0.2, 0.25), (0.03, 0.12, 0.08), accent or GOLDC)  # seguro
+    if mag:
+        b.box((0, -0.7, -0.18), (0.2, 0.28, 0.5), shade(metal, -0.3), rot=(10, 0, 0))
+        b.box((0, -0.73, -0.45), (0.23, 0.32, 0.06), shade(metal, -0.5), rot=(10, 0, 0))
+    if long_stock:
+        b.box((0, 0.55, 0.12), (0.24, 0.8, 0.32), stock, rot=(6, 0, 0))
+        b.box((0, 0.95, 0.06), (0.26, 0.1, 0.44), shade(stock, -0.4), rot=(6, 0, 0))  # cantonera
+        b.box((0, 0.5, 0.0), (0.27, 0.18, 0.12), shade(stock, -0.25))
+    # cañón(es) con bandas y boca
+    by = -0.9
+    offs = (-0.08 * k, 0.08 * k) if double else (0,)
+    r = 0.075 * k
+    for x in offs:
+        b.rod((x, by, 0.26), (x, by - barrel, 0.26), r, metal)
+        b.box((x, by - barrel - 0.04, 0.26), (r * 2.8, 0.1, r * 2.8), shade(metal, -0.45))
+    # guardamano
+    b.box((0, by - barrel * 0.3, 0.12), (0.2 * k * (1.6 if double else 1), barrel * 0.55, 0.16), stock)
+    for t in (0.15, 0.55):
+        b.box((0, by - barrel * t, 0.22), (0.26 * k * (1.6 if double else 1), 0.06, 0.26 * k), accent or "#b08a40")
+    # miras
+    b.box((0, by - barrel + 0.06, 0.26 + r + 0.05), (0.04, 0.05, 0.1), shade(metal, -0.5))
+    b.box((0, -0.05, 0.42 * k), (0.12, 0.05, 0.08), shade(metal, -0.5))
+    if pump:
+        b.box((0, by - barrel * 0.5, 0.1), (0.2, 0.4, 0.14), shade(stock, -0.2))
+        for t in range(4):
+            b.box((0, by - barrel * 0.5 - 0.15 + t * 0.1, 0.1), (0.22, 0.03, 0.16), shade(stock, -0.45))
+    if drum:
+        b.rod((0, -0.5, 0.22), (0, -0.85, 0.22), 0.2, shade(metal, 0.2))
+        for a in range(6):
+            ang = a / 6 * math.tau
+            b.box((math.cos(ang) * 0.14, -0.86, 0.22 + math.sin(ang) * 0.14), (0.05, 0.02, 0.05), BLACK)
+    if scope:
+        b.rod((0, -0.05, 0.62 * k), (0, -0.95, 0.62 * k), 0.09, "#1a1a20")
+        for y in (-0.05, -0.95):
+            b.box((0, y, 0.62 * k), (0.25, 0.08, 0.25), "#22222a")
+        b.box((0, -0.99, 0.62 * k), (0.15, 0.02, 0.15), "#60a0ff")
+        for y in (-0.3, -0.7):
+            b.box((0, y, 0.48 * k), (0.08, 0.06, 0.16), DSTEEL)
+    if harpoon:
+        tip = by - barrel
+        b.rod((0, tip, 0.26), (0, tip - 0.4, 0.26), 0.03, STEEL)
+        b.box((0, tip - 0.5, 0.26), (0.2, 0.2, 0.06), STEEL)
+        for sgn in (-1, 1):
+            b.box((sgn * 0.12, tip - 0.38, 0.26), (0.05, 0.14, 0.04), STEEL, rot=(0, 0, sgn * 30))
+        b.box((0.2, -0.6, 0.15), (0.12, 0.3, 0.12), ROPE)
+    if bipod:
+        for sgn in (-1, 1):
+            b.rod((0, by - barrel * 0.7, 0.18), (sgn * 0.3, by - barrel * 0.75, -0.5), 0.03, DSTEEL)
+    if coils:
+        for t in range(coils):
+            b.box((0, by - 0.2 - t * barrel / coils, 0.26), (0.3 * k, 0.07, 0.3 * k), neon or GOLDC)
+    if rails:
+        for sgn in (-1, 1):
+            b.box((sgn * 0.13 * k, by - barrel / 2, 0.26), (0.05, barrel * 0.95, 0.1), shade(metal, 0.15))
+    if neon:
+        b.box((0, -0.4, 0.44 * k + 0.02), (0.06, 0.8, 0.03), neon)
+        for sgn in (-1, 1):
+            b.box((sgn * 0.17 * k, -0.45, 0.2), (0.02, 0.6, 0.06), neon)
+        b.box((0, by - barrel - 0.12, 0.26), (r * 2.4, 0.06, r * 2.4), neon)
+    if cannon:
+        b.rod((0, by + 0.1, 0.26), (0, by - barrel * 0.5, 0.26), 0.24 * k, metal)
+        b.box((0, by - barrel * 0.5 - 0.06, 0.26), (0.6 * k, 0.12, 0.6 * k), shade(metal, -0.4))
+        b.box((0, by + 0.1, 0.26), (0.55 * k, 0.1, 0.55 * k), accent or GOLDC)
 
 
 def build_weapon(i):
     reset()
     name = "W%02d" % i
-    b = B(name)
+    b = B(name, blocky=True, stud=WEAPON_STUD)
     if i == 1:  # resortera
-        b.add("cyl", (0, 0, -0.3), (0.12, 0.12, 0.45), WOOD)
-        b.add("torus", (0, 0, -0.2), (0.14, 0.14, 0.3), "#c83a2a")
-        for s in (-1, 1):
-            b.rod((0, 0, 0.1), (s * 0.4, -0.05, 0.7), 0.1, WOOD)
-            b.ball((s * 0.4, -0.05, 0.72), 0.11, WOOD)
-            b.rod((s * 0.4, -0.05, 0.7), (s * 0.12, 0.45, 0.62), 0.03, "#e04040")
-        b.ball((0, 0.5, 0.62), 0.16, "#6a4a2a", sq=(1.3, 0.7, 0.8))
-        b.ball((0, 0.47, 0.66), 0.13, "#9a9a9a")
+        b.box((0, 0, -0.3), (0.2, 0.2, 0.7), WOOD)
+        for z in (-0.15, -0.35, -0.55):
+            b.box((0, 0, z), (0.23, 0.23, 0.08), RED)
+        b.box((0, 0, 0.1), (0.3, 0.22, 0.2), WOOD)
+        for sgn in (-1, 1):
+            b.rod((sgn * 0.1, 0, 0.15), (sgn * 0.42, 0, 0.75), 0.09, WOOD)
+            b.box((sgn * 0.44, 0, 0.8), (0.16, 0.16, 0.14), shade(WOOD, -0.3))
+            b.rod((sgn * 0.44, 0.03, 0.78), (sgn * 0.12, 0.5, 0.72), 0.03, "#e04040")
+        b.box((0, 0.55, 0.72), (0.3, 0.14, 0.2), LEATHER)
+        b.box((0, 0.5, 0.82), (0.18, 0.16, 0.16), "#9a9a9a")
     elif i == 2:  # honda
-        b.rod((0, 0, 0), (0, 0.1, -1.0), 0.03, "#d8c090")
-        b.ball((0, 0.1, -1.1), 0.22, "#6a4a2a", sq=(1, 1, 0.6))
-        b.ball((0, 0.1, -1.0), 0.17, "#8a8a8a")
-        b.ball((0, 0, 0.05), 0.08, "#d8c090")
+        b.box((0, 0, 0), (0.16, 0.16, 0.16), LEATHER)
+        b.box((0, 0, 0.1), (0.2, 0.06, 0.14), ROPE)
+        for x in (-0.05, 0.05):
+            b.rod((x, 0, -0.05), (x * 3, 0.05, -1.0), 0.02, ROPE)
+        b.box((0, 0.05, -1.08), (0.36, 0.26, 0.12), LEATHER)
+        b.box((0, 0.05, -1.0), (0.22, 0.2, 0.2), "#8a8a8a")
     elif i == 3:  # bumerán
-        b.box((-0.35, -0.3, 0), (0.25, 0.9, 0.08), WOOD, rot=(0, 0, -40))
-        b.box((0.35, -0.3, 0), (0.25, 0.9, 0.08), WOOD, rot=(0, 0, 40))
-        b.box((0, -0.62, 0), (0.28, 0.28, 0.1), "#e05030", rot=(0, 0, 45))
+        for sgn in (-1, 1):
+            b.box((sgn * 0.35, -0.3, 0), (0.26, 0.95, 0.08), WOOD, rot=(0, 0, sgn * -40))
+            for t in (0.2, 0.5, 0.8):
+                b.box((sgn * (0.06 + 0.58 * t), -0.3 + (0.5 - t) * 0.0 - 0.6 * t + 0.3, 0.045), (0.24, 0.05, 0.02), "#e05030", rot=(0, 0, sgn * -40))
+            b.box((sgn * 0.62, 0.05, 0), (0.28, 0.16, 0.1), "#ffd060", rot=(0, 0, sgn * -40))
+        b.box((0, -0.65, 0), (0.3, 0.3, 0.1), "#e05030", rot=(0, 0, 45))
     elif i == 4:  # cerbatana
-        b.rod((0, 0.4, 0), (0, -2.4, 0), 0.09, "#8ab050")
-        for y in (-0.4, -1.2, -2.0):
-            b.add("cyl", (0, y, 0), (0.11, 0.11, 0.06), "#c08040", rot=(90, 0, 0))
-        b.add("cyl", (0, 0.45, 0), (0.13, 0.13, 0.08), "#c83a2a", rot=(90, 0, 0))
+        b.rod((0, 0.45, 0.1), (0, -2.5, 0.1), 0.09, "#9ac060")
+        for y in (0.1, -0.5, -1.1, -1.7, -2.3):
+            b.box((0, y, 0.1), (0.22, 0.06, 0.22), "#6a8a3a")
+        b.box((0, 0.5, 0.1), (0.24, 0.12, 0.24), RED)
+        b.box((0, -0.2, 0.1), (0.24, 0.4, 0.24), LEATHER)
+        for sgn in (-1, 1):
+            b.box((sgn * 0.14, -0.9, 0.12), (0.04, 0.3, 0.06), "#ffd060")
+            b.box((sgn * 0.14, -0.9, 0.0), (0.03, 0.06, 0.22), "#3a8ae0")
     elif i in (5, 7, 16):  # arcos
-        col = {5: WOOD, 7: DWOOD, 16: "#ffcc33"}[i]
-        k = 1.25 if i != 5 else 1.0
-        b.box((0, 0, 0), (0.14, 0.18, 0.5), "#3a2a1a")
-        pts = [(0, 0, 0.25), (0, -0.25, 0.8 * k), (0, -0.1, 1.25 * k)]
-        for s in (1, -1):
-            p = [Vector((x, y, z * s)) for (x, y, z) in pts]
-            b.rod(p[0], p[1], 0.07, col)
-            b.rod(p[1], p[2], 0.055, col)
-        b.rod((0, -0.1, 1.25 * k), (0, 0.15, 0), 0.015, WHITE)
-        b.rod((0, 0.15, 0), (0, -0.1, -1.25 * k), 0.015, WHITE)
-        b.rod((0, 0.15, 0.02), (0, -1.6, 0.02), 0.03, WOOD)
-        b.spike((0, -1.6, 0.02), (0, -1.85, 0.02), 0.07, STEEL)
-        for s in (-1, 1):
-            b.box((s * 0.05, 0.1, 0.02), (0.02, 0.2, 0.12), "#e04040")
-    elif i == 6:  # lanzador de lanzas
-        b.rod((0, 0.4, 0.15), (0, -2.6, 0.15), 0.05, WOOD)
-        b.spike((0, -2.6, 0.15), (0, -3.1, 0.15), 0.1, STEEL)
-        b.box((0, 0.1, 0.0), (0.12, 1.0, 0.1), DWOOD)
-        w_grip(b)
-    elif i in (8, 16 + 100):  # ballesta
-        b.box((0, -0.5, 0.15), (0.22, 1.6, 0.22), WOOD)
-        w_grip(b)
-        for s in (-1, 1):
-            b.rod((0, -1.2, 0.2), (s * 0.85, -1.0, 0.2), 0.05, DSTEEL)
-        b.rod((-0.85, -1.0, 0.24), (0, -0.55, 0.24), 0.015, WHITE)
-        b.rod((0.85, -1.0, 0.24), (0, -0.55, 0.24), 0.015, WHITE)
-        b.rod((0, -0.55, 0.28), (0, -1.5, 0.28), 0.03, DWOOD)
-        b.spike((0, -1.5, 0.28), (0, -1.68, 0.28), 0.06, STEEL)
+        limb = {5: WOOD, 7: DWOOD, 16: GOLDC}[i]
+        k = {5: 1.0, 7: 1.35, 16: 1.25}[i]
+        w_bow(b, limb, k, grip_wrap=LEATHER if i != 16 else "#8a2a2a", gem="#40e0ff" if i == 16 else None)
+    elif i == 6:  # lanzador de lanzas (atlatl con lanza)
+        b.box((0, -0.3, 0.05), (0.14, 1.4, 0.08), DWOOD)
+        b.box((0, -0.95, 0.12), (0.1, 0.1, 0.12), shade(DWOOD, -0.3))
+        w_grip(b, DWOOD, wrap=ROPE, angle=0)
+        b.box((0, -1.0, 0.2), (0.07, 3.2, 0.07), WOOD)
+        b.box((0, -2.7, 0.2), (0.2, 0.32, 0.06), "#5a5a68")
+        b.box((0, -2.9, 0.2), (0.1, 0.14, 0.05), "#5a5a68")
+        for y in (-2.45, -2.5):
+            b.box((0, y, 0.2), (0.1, 0.03, 0.1), ROPE)
+        for dz in (-0.08, 0.08):
+            b.box((0, 0.45, 0.2 + dz), (0.03, 0.3, 0.1), RED)
+    elif i == 8:  # ballesta
+        w_grip(b, WOOD)
+        w_trigger(b)
+        b.box((0, -0.55, 0.15), (0.22, 1.7, 0.2), WOOD)
+        b.box((0, 0.45, 0.08), (0.22, 0.6, 0.3), WOOD, rot=(6, 0, 0))
+        b.box((0, -0.55, 0.27), (0.08, 1.5, 0.04), DSTEEL)  # canal
+        for sgn in (-1, 1):
+            b.rod((0, -1.25, 0.2), (sgn * 0.55, -1.15, 0.2), 0.05, DSTEEL)
+            b.rod((sgn * 0.55, -1.15, 0.2), (sgn * 0.85, -0.98, 0.2), 0.04, DSTEEL)
+            b.rod((sgn * 0.85, -0.98, 0.22), (0, -0.4, 0.26), 0.012, WHITE)
+        b.box((0, -1.42, 0.12), (0.3, 0.06, 0.24), DSTEEL)  # estribo
+        w_arrow(b, -0.35, -1.55, 0.31, shaft=DWOOD, fletch="#3a8ae0")
     else:  # armas de fuego y futuristas
         spec = {
-            9: dict(barrel=2.0, stock=WOOD, metal=STEEL, long_stock=True),
-            10: dict(barrel=1.2, stock=DWOOD, metal="#a08050"),
-            11: dict(barrel=0.7, stock=DWOOD, metal="#b0b4c0", drum=True),
-            12: dict(barrel=1.8, stock=WOOD, metal=DSTEEL, scope=True, long_stock=True),
-            13: dict(barrel=1.5, stock=DWOOD, metal=DSTEEL, double=True, long_stock=True),
-            14: dict(barrel=1.4, stock="#2a5a8a", metal=STEEL, harpoon=True, long_stock=True),
-            15: dict(barrel=2.6, stock="#4a5a3a", metal="#2a2a30", scope=True, long_stock=True, bipod=True),
-            17: dict(barrel=1.4, stock="#e8eaf0", metal="#3a3a5a", neon="#40e0ff", long_stock=True),
-            18: dict(barrel=2.2, stock="#22222a", metal="#5a5a70", neon="#60ff60", scope=True, long_stock=True, rails=True),
-            19: dict(barrel=1.6, stock="#5a2a1a", metal="#4a3028", neon="#ff8020", bulky=1.8, long_stock=True),
-            20: dict(barrel=1.9, stock="#2a1050", metal="#4a2a8a", neon="#ff50ff", bulky=2.1, long_stock=True, rails=True),
+            9: dict(barrel=2.2, stock=WOOD, metal=STEEL, accent="#c09040", mag=False),
+            10: dict(barrel=1.3, stock=DWOOD, metal="#a08050", long_stock=False, mag=False, accent=GOLDC),
+            11: dict(barrel=0.8, stock=DWOOD, metal="#b8bcc8", drum=True, long_stock=False, mag=False),
+            12: dict(barrel=1.9, stock=WOOD, metal=DSTEEL, scope=True),
+            13: dict(barrel=1.6, stock=DWOOD, metal=DSTEEL, double=True, pump=True, mag=False),
+            14: dict(barrel=1.4, stock="#2a5a8a", metal=STEEL, harpoon=True, mag=False, accent="#ffd060"),
+            15: dict(barrel=2.8, stock="#4a5a3a", metal="#2a2a30", scope=True, bipod=True),
+            17: dict(barrel=1.5, stock="#e8eaf0", metal="#3a3a5a", neon="#40e0ff", coils=3),
+            18: dict(barrel=2.3, stock="#22222a", metal="#5a5a70", neon="#60ff60", scope=True, rails=True, coils=4),
+            19: dict(barrel=1.6, stock="#5a2a1a", metal="#4a3028", neon="#ff8020", bulky=1.6, cannon=True, accent="#ff4010"),
+            20: dict(barrel=2.0, stock="#2a1050", metal="#4a2a8a", neon="#ff50ff", bulky=1.8, cannon=True, rails=True, coils=3, accent="#ffd060"),
         }[i]
-        k = spec.get("bulky", 1.0)
-        w_grip(b, spec["stock"])
-        b.box((0, -0.35, 0.18), (0.26 * k, 0.9, 0.34 * k), spec["metal"], bevel=0.04)
-        b.box((0, 0.1, -0.1), (0.06, 0.25, 0.04), DSTEEL)
-        if spec.get("long_stock"):
-            b.box((0, 0.65, 0.05), (0.22, 0.9, 0.3), spec["stock"], rot=(8, 0, 0))
-        offs = (-0.07, 0.07) if spec.get("double") else (0,)
-        for x in offs:
-            b.rod((x, -0.7, 0.24), (x, -0.8 - spec["barrel"], 0.24), 0.07 * k, spec["metal"])
-        b.box((0, -0.6 - spec["barrel"] * 0.4, 0.06), (0.16 * k, spec["barrel"] * 0.6, 0.12), spec["stock"])
-        if spec.get("drum"):
-            b.add("cyl", (0, -0.55, 0.22), (0.17, 0.17, 0.2), STEEL, rot=(90, 0, 0))
-        if spec.get("scope"):
-            b.rod((0, -0.1, 0.55), (0, -0.9, 0.55), 0.09, "#1a1a20")
-            b.add("cyl", (0, -0.92, 0.55), (0.11, 0.11, 0.04), "#60a0ff", rot=(90, 0, 0))
-        if spec.get("harpoon"):
-            b.spike((0, -0.8 - spec["barrel"], 0.24), (0, -1.3 - spec["barrel"], 0.24), 0.14, STEEL)
-            b.rod((0, -0.8 - spec["barrel"], 0.24), (0, -1.0 - spec["barrel"], 0.24), 0.03, STEEL)
-        if spec.get("bipod"):
-            for s in (-1, 1):
-                b.rod((0, -1.8, 0.15), (s * 0.25, -1.9, -0.45), 0.03, DSTEEL)
-        if spec.get("neon"):
-            n = spec["neon"]
-            b.rod((0, -0.3, 0.36 * k), (0, -0.6 - spec["barrel"], 0.36 * k), 0.035, n)
-            b.ball((0, -0.85 - spec["barrel"], 0.24), 0.13 * k, n)
-            for s in (-1, 1):
-                b.box((s * 0.14 * k, -0.35, 0.18), (0.02, 0.5, 0.08), n)
-        if spec.get("rails"):
-            for s in (-1, 1):
-                b.box((s * 0.12 * k, -0.6 - spec["barrel"] / 2, 0.24), (0.05, spec["barrel"], 0.08), spec["metal"])
-        if i == 19:
-            b.add("cyl", (0, -0.6, 0.24), (0.28, 0.28, 0.6), spec["metal"], rot=(90, 0, 0))
-            b.ball((0, -1.25, 0.24), 0.22, "#ff4010")
-        if i == 20:
-            b.add("torus", (0, -1.2, 0.24), (0.35, 0.35, 0.8), spec["neon"], rot=(90, 0, 0))
-            b.add("torus", (0, -1.8, 0.24), (0.28, 0.28, 0.7), spec["neon"], rot=(90, 0, 0))
+        w_gun(b, **spec)
     return b.finish()
 
 

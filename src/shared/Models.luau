@@ -144,7 +144,7 @@ end
 -- Animal cargado en la mano (más chico)
 function Models.animalTool(entry: number): Tool
 	local m = Models.animal(entry, CFrame.new(), false)
-	m:ScaleTo(m:GetScale() * 0.5)
+	m:ScaleTo(m:GetScale() * 0.4)
 	local tool = toTool(m, Config.entryName(entry), CFrame.new(0, 0, 1) * CFrame.Angles(0, math.rad(180), 0))
 	tool:SetAttribute("AnimalId", entry)
 	return tool

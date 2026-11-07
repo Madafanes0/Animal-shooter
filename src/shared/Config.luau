@@ -230,6 +230,11 @@ function C.rollAnimal(dist: number, rng: Random, luckMult: number?)
 	return epoch.animals[1], weights[1] / total
 end
 
+-- Recompensa por descubrir los 5 animales de un mundo (época)
+function C.worldReward(epoch: number)
+	return { money = math.floor(2000 * 2.3 ^ (epoch - 1)), power = 25 * epoch }
+end
+
 function C.sellValue(entry: number): number
 	return C.entryIncome(entry) * 25
 end

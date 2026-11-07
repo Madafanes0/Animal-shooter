@@ -80,8 +80,9 @@ end
 -- Casillas del lado izquierdo (2 × 2), como en Roll a Chef
 local side = Theme.new("Frame", { Name = "Side", Size = UDim2.fromOffset(186, 186), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Parent = gui })
 Theme.new("UIGridLayout", { CellSize = UDim2.fromOffset(88, 88), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = side })
-for i, t in { { "Shop", "Lime", "store", "🛒" }, { "Stable", "Orange", "platform", "🐾" }, { "Index", "Blue", "book", "📖" }, { "Robux", "Gold", "robux", "⬢" } } do
-	local tile = Kit.tile(t[1], t[2], t[3], t[4], 88, side, function()
+-- { ventana, texto, color, ícono, respaldo }
+for i, t in { { "Shop", "Weapons", "Lime", "store", "🛒" }, { "Stable", "Stable", "Orange", "platform", "🐾" }, { "Index", "Index", "Blue", "book", "📖" }, { "Robux", "Shop", "Red", "basket", "🧺" } } do
+	local tile = Kit.tile(t[2], t[3], t[4], t[5], 88, side, function()
 		toggle(t[1])
 	end)
 	tile.LayoutOrder = i
@@ -93,8 +94,10 @@ local powerLabel = Kit.label({ Text = "Power 0", TextSize = 24, Size = UDim2.fro
 local moneyLabel = Kit.label({ Text = "$0", TextSize = 48, Size = UDim2.fromOffset(340, 56), Position = UDim2.fromOffset(0, 34), XAlign = Enum.TextXAlignment.Left, Wrapped = false, Stroke = 3.5, Gradient = ColorSequence.new(C.MoneyTop, C.Money), Parent = stats })
 
 -- Ingreso arriba al centro, pista debajo, arma y suerte arriba a la derecha
+-- (el ingreso se ve encima del establo; esta etiqueta queda oculta)
 local incomeLabel = Kit.label({ Text = "+$0/s", TextSize = 46, Size = UDim2.fromOffset(420, 52), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 4), Wrapped = false, Stroke = 3.5, Gradient = ColorSequence.new(C.MoneyTop, C.Money), Parent = gui })
-local hint = Kit.label({ Text = "", TextSize = 24, Size = UDim2.fromOffset(640, 30), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 58), Scaled = true, Parent = gui })
+incomeLabel.Visible = false
+local hint = Kit.label({ Text = "", TextSize = 24, Size = UDim2.fromOffset(640, 30), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), Scaled = true, Parent = gui })
 local info = Kit.label({ Text = "", TextSize = 22, Size = UDim2.fromOffset(320, 56), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 6), XAlign = Enum.TextXAlignment.Right, Scaled = true, Parent = gui })
 
 local shootBtn = Kit.button({ Name = "Shoot", Text = "SHOOT!", Color = "Red", Size = UDim2.fromOffset(230, 76), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -112), TextSize = 40, Parent = gui })
@@ -121,10 +124,10 @@ end)
 ---------------------------------------------------------------- Ventanas
 
 local WINDOWS = {
-	Shop = { Title = "Weapon Shop", Icon = "store", Fallback = "🛒", Color = "Lime" },
+	Shop = { Title = "Weapons", Icon = "store", Fallback = "🛒", Color = "Lime" },
 	Stable = { Title = "Stable", Icon = "platform", Fallback = "🐾", Color = "Orange" },
 	Index = { Title = "Index", Icon = "book", Fallback = "📖", Color = "Blue" },
-	Robux = { Title = "Robux Shop", Icon = "robux", Fallback = "⬢", Color = "Gold" },
+	Robux = { Title = "Shop", Icon = "basket", Fallback = "🧺", Color = "Red" },
 }
 local HEADER = 62
 
@@ -316,30 +319,87 @@ local function renderIndex()
 	end
 end
 
+-- Tienda (como la de Roll a Chef): armas exclusivas en tarjeta arcoíris, pases en dos columnas y boosts
+local function buy(it, isPass: boolean)
+	if it.id == 0 then
+		action("TestBuy", it.key) -- sin ID: gratis en Studio
+	elseif isPass then
+		MarketplaceService:PromptGamePassPurchase(player, it.id)
+	else
+		MarketplaceService:PromptProductPurchase(player, it.id)
+	end
+end
+
+local function ownedTag(parent: Instance, size: UDim2, pos: UDim2, anchor: Vector2)
+	Kit.label({ Text = "OWNED!", TextSize = 26, Size = size, Position = pos, AnchorPoint = anchor, Color = C.Money, ZIndex = 9, Parent = parent })
+end
+
 local function renderRobux()
-	grid.CellSize = UDim2.new(0.5, -6, 0, 108)
-	local function item(order: number, it, isPass: boolean)
-		local owned = isPass and state.passes[it.key]
-		local card = itemCard(order, it.color, it.name, it.color, it.desc)
-		if owned then
-			cardButton(card, "Owned", "Gray", UDim2.fromOffset(130, 50), UDim2.new(1, -140, 1, -58), function() end)
-			return
-		end
-		Kit.priceButton("Robux", it.price, { Size = UDim2.fromOffset(130, 50), Position = UDim2.new(1, -140, 1, -58), TextSize = 24, ZIndex = 8, Parent = card, OnClick = function()
-			if it.id == 0 then
-				action("TestBuy", it.key) -- sin ID: gratis en Studio
-			elseif isPass then
-				MarketplaceService:PromptGamePassPurchase(player, it.id)
-			else
-				MarketplaceService:PromptProductPurchase(player, it.id)
+	grid.Parent = nil
+	local list = Theme.list(scroll, 14)
+	list.Name = "IndexList"
+
+	-- Armas exclusivas
+	local exclusive = Theme.new("Frame", { Name = "Exclusive", Size = UDim2.new(1, -8, 0, 230), LayoutOrder = 1, ZIndex = 6, Parent = scroll })
+	Kit.face(exclusive, "Rainbow")
+	Kit.label({ Text = "Exclusive Weapons!", TextSize = 32, Size = UDim2.new(1, -20, 0, 38), Position = UDim2.fromOffset(10, 4), Scaled = true, Stroke = 3.5, ZIndex = 8, Parent = exclusive })
+	local row = Theme.new("Frame", { Size = UDim2.new(1, -20, 0, 176), Position = UDim2.fromOffset(10, 46), ZIndex = 7, Parent = exclusive })
+	Theme.new("UIGridLayout", { CellSize = UDim2.new(1 / 3, -8, 1, 0), CellPadding = UDim2.fromOffset(12, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = row })
+	for k, w in Config.EXCLUSIVE_WEAPONS do
+		local pass
+		for _, it in Config.Passes do
+			if it.key == w.pass then
+				pass = it
 			end
-		end })
+		end
+		local tile = Theme.new("Frame", { LayoutOrder = k, ZIndex = 7, Parent = row })
+		Kit.face(tile, "Dark", { Stroke = 3 })
+		Preview.weapon(w.index, UDim2.new(1, -10, 0, 86), tile, 8).Position = UDim2.fromOffset(5, 2)
+		Kit.label({ Text = w.name, TextSize = 20, Size = UDim2.new(1, -8, 0, 22), Position = UDim2.fromOffset(4, 86), Scaled = true, Color = w.color, ZIndex = 9, Parent = tile })
+		Kit.label({ Text = w.luck .. "x luck · " .. (if w.range >= Config.MAX_DIST then "Max reach" else "World " .. Config.epochAt(w.range)), TextSize = 15, Size = UDim2.new(1, -8, 0, 18), Position = UDim2.fromOffset(4, 108), Scaled = true, Font = Theme.FontBold, ZIndex = 9, Parent = tile })
+		if pass and state.passes[pass.key] then
+			ownedTag(tile, UDim2.new(1, -16, 0, 40), UDim2.new(0.5, 0, 1, -6), Vector2.new(0.5, 1))
+		elseif pass then
+			Kit.priceButton("Robux", pass.price, { Size = UDim2.new(1, -16, 0, 40), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -6), TextSize = 24, Color = "Lime", ZIndex = 9, Parent = tile, OnClick = function()
+				buy(pass, true)
+			end })
+		end
 	end
+
+	-- Pases en dos columnas
+	local passes = Theme.new("Frame", { Name = "Passes", Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, ZIndex = 6, Parent = scroll })
+	Theme.new("UIGridLayout", { CellSize = UDim2.new(0.5, -6, 0, 170), CellPadding = UDim2.fromOffset(12, 12), SortOrder = Enum.SortOrder.LayoutOrder, Parent = passes })
 	for n, it in Config.Passes do
-		item(n, it, true)
+		if not it.icon then
+			continue -- las armas exclusivas van arriba
+		end
+		local card = Theme.new("Frame", { LayoutOrder = n, ZIndex = 6, Parent = passes })
+		Kit.face(card, it.face)
+		Kit.icon(it.icon, "⭐", { Size = UDim2.fromOffset(110, 110), Position = UDim2.fromOffset(10, 24), ZIndex = 7, Parent = card })
+		Kit.label({ Text = it.name, TextSize = 30, Size = UDim2.new(1, -20, 0, 36), Position = UDim2.fromOffset(10, 6), XAlign = Enum.TextXAlignment.Right, Scaled = true, Stroke = 3.5, ZIndex = 8, Parent = card })
+		Kit.label({ Text = it.desc, TextSize = 19, Size = UDim2.new(1, -140, 0, 56), Position = UDim2.fromOffset(130, 44), XAlign = Enum.TextXAlignment.Right, YAlign = Enum.TextYAlignment.Top, Scaled = true, ZIndex = 8, Parent = card })
+		if state.passes[it.key] then
+			ownedTag(card, UDim2.new(0.6, 0, 0, 44), UDim2.new(1, -12, 1, -12), Vector2.new(1, 1))
+		else
+			Kit.priceButton("Robux", it.price, { Size = UDim2.new(0.6, 0, 0, 44), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -12, 1, -12), TextSize = 26, Color = "Lime", ZIndex = 8, Parent = card, OnClick = function()
+				buy(it, true)
+			end })
+		end
 	end
+
+	-- Boosts
+	Kit.label({ Text = "Boosts", TextSize = 28, Size = UDim2.new(1, -8, 0, 32), LayoutOrder = 3, XAlign = Enum.TextXAlignment.Left, Gradient = ColorSequence.new(C.MoneyTop, C.Money), ZIndex = 7, Parent = scroll })
+	local boosts = Theme.new("Frame", { Size = UDim2.new(1, -8, 0, 130), LayoutOrder = 4, ZIndex = 6, Parent = scroll })
+	Theme.new("UIGridLayout", { CellSize = UDim2.new(0.5, -6, 1, 0), CellPadding = UDim2.fromOffset(12, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = boosts })
 	for n, it in Config.Products do
-		item(100 + n, it, false)
+		local card = Theme.new("Frame", { LayoutOrder = n, ZIndex = 6, Parent = boosts })
+		Kit.face(card, it.face)
+		Kit.icon(it.icon, "💵", { Size = UDim2.fromOffset(84, 84), Position = UDim2.fromOffset(10, 10), ZIndex = 7, Parent = card })
+		Kit.label({ Text = it.name, TextSize = 24, Size = UDim2.new(1, -110, 0, 30), Position = UDim2.fromOffset(100, 8), Scaled = true, XAlign = Enum.TextXAlignment.Left, ZIndex = 8, Parent = card })
+		Kit.label({ Text = it.desc, TextSize = 16, Size = UDim2.new(1, -110, 0, 22), Position = UDim2.fromOffset(100, 40), Scaled = true, XAlign = Enum.TextXAlignment.Left, Font = Theme.FontBold, ZIndex = 8, Parent = card })
+		Kit.priceButton("Robux", it.price, { Size = UDim2.new(1, -116, 0, 40), Position = UDim2.new(0, 104, 1, -50), TextSize = 24, Color = "Lime", ZIndex = 8, Parent = card, OnClick = function()
+			buy(it, false)
+		end })
 	end
 end
 
@@ -375,11 +435,91 @@ local lastPanelKey = ""
 local lastPower: number? = nil
 
 -- "+N" que sube junto al poder mientras entrenas
-local function powerPop(gain: number)
-	local t = text(stats, { Size = UDim2.fromOffset(120, 28), Position = UDim2.new(0, 150, 0, -6), Text = "+" .. fmt(gain), TextColor3 = Color3.fromRGB(255, 220, 80), ZIndex = 5 })
-	TweenService:Create(t, TweenInfo.new(0.8), { Position = UDim2.new(0, 150, 0, -40), TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
-	task.delay(0.85, t.Destroy, t)
+-- "+N" grande y de colores en medio de la pantalla
+local POP_COLORS = {
+	ColorSequence.new(Color3.fromRGB(255, 240, 90), Color3.fromRGB(255, 150, 20)),
+	ColorSequence.new(Color3.fromRGB(120, 230, 255), Color3.fromRGB(60, 120, 255)),
+	ColorSequence.new(Color3.fromRGB(255, 130, 220), Color3.fromRGB(200, 60, 255)),
+	ColorSequence.new(Color3.fromRGB(170, 255, 90), Color3.fromRGB(40, 200, 80)),
+}
+local function powerPop(gain: number, big: boolean?)
+	local x = 0.5 + (math.random() - 0.5) * 0.16
+	local y = 0.42 + (math.random() - 0.5) * 0.1
+	local label = Kit.label({
+		Text = "+" .. fmt(gain) .. (if big then " POWER!" else ""),
+		TextSize = if big then 72 else 54,
+		Size = UDim2.fromOffset(420, if big then 84 else 64),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(x, y),
+		Stroke = 4,
+		Wrapped = false,
+		Gradient = POP_COLORS[math.random(1, #POP_COLORS)],
+		ZIndex = 30,
+		Parent = gui,
+	})
+	label.Rotation = math.random(-12, 12)
+	local scale = Theme.new("UIScale", { Scale = 0.3, Parent = label })
+	Theme.tween(scale, Theme.Pop, { Scale = 1 })
+	task.delay(0.35, function()
+		Theme.tween(label, TweenInfo.new(0.6), { Position = UDim2.fromScale(x, y - 0.12), TextTransparency = 1 })
+		local stroke = label:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			Theme.tween(stroke, TweenInfo.new(0.6), { Transparency = 1 })
+		end
+	end)
+	task.delay(1, label.Destroy, label)
 end
+
+-- Ícono de bonus que aparece mientras entrenas: clickéalo antes de que se vaya
+Remotes.Bonus.OnClientEvent:Connect(function(kind, value)
+	if kind == "claimed" then
+		powerPop(value, true)
+		Kit.sound(Kit.PING, 0.6)
+		return
+	end
+	local btn = Theme.new("TextButton", { Name = "Bonus", Size = UDim2.fromOffset(110, 110), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.3 + math.random() * 0.4, 0.3 + math.random() * 0.3), Text = "", ZIndex = 25, Parent = gui })
+	Kit.face(btn, "Rainbow", { Stroke = 4, Radius = 55 })
+	Kit.icon("upgrade", "⚡", { Size = UDim2.fromScale(0.7, 0.62), Position = UDim2.fromScale(0.15, 0.06), ZIndex = 26, Parent = btn })
+	Kit.label({ Text = "+?", TextSize = 30, Size = UDim2.new(1, 0, 0, 34), Position = UDim2.new(0, 0, 1, -38), ZIndex = 27, Parent = btn })
+	local scale = Theme.new("UIScale", { Scale = 0, Parent = btn })
+	Theme.tween(scale, Theme.Pop, { Scale = 1 })
+	local alive = true
+	task.spawn(function()
+		while alive and btn.Parent do
+			btn.Rotation = math.sin(os.clock() * 6) * 10
+			task.wait()
+		end
+	end)
+	btn.Activated:Connect(function()
+		alive = false
+		action("ClaimBonus", value)
+		btn:Destroy()
+	end)
+	task.delay(5, function()
+		alive = false
+		if btn.Parent then
+			btn:Destroy()
+		end
+	end)
+end)
+
+-- Al entrar al campo de entrenamiento sacas tu arma
+player:GetAttributeChangedSignal("Training"):Connect(function()
+	if not player:GetAttribute("Training") then
+		return
+	end
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not hum or not backpack then
+		return
+	end
+	for _, tool in backpack:GetChildren() do
+		if tool:IsA("Tool") and tool:GetAttribute("WeaponIndex") then
+			hum:EquipTool(tool)
+		end
+	end
+end)
 
 -- Entrenando: una piedrita vuela de tu personaje a una de las dianas
 local function trainShot()

@@ -203,16 +203,16 @@ end
 
 -- Tienda de Robux. Pon el ID real del pase/producto (Creator Dashboard); con 0 sólo se puede probar en Studio.
 C.Passes = {
-	{ key = "Luck2", name = "2x Luck", desc = "Double luck on every shot", price = 199, id = 0, color = Color3.fromRGB(80, 220, 120) },
-	{ key = "Money2", name = "2x Money", desc = "Your stable earns double", price = 149, id = 0, color = Color3.fromRGB(90, 255, 90) },
-	{ key = "BigHands", name = "+50 Hand Slots", desc = "Carry 75 animals at once", price = 79, id = 0, color = Color3.fromRGB(255, 180, 60) },
+	{ key = "Luck2", icon = "clover", face = "Green", name = "2x Luck", desc = "Double luck on every shot", price = 199, id = 0, color = Color3.fromRGB(80, 220, 120) },
+	{ key = "Money2", icon = "cash", face = "Lime", name = "2x Money", desc = "Your stable earns double", price = 149, id = 0, color = Color3.fromRGB(90, 255, 90) },
+	{ key = "BigHands", icon = "backpack", face = "Orange", name = "+50 Hand Slots", desc = "Carry 75 animals at once", price = 79, id = 0, color = Color3.fromRGB(255, 180, 60) },
 	{ key = "W21", name = "Ruby Crossbow", desc = "Exclusive · 1.5x luck · Epoch 8", price = 249, id = 0, color = C.EXCLUSIVE_WEAPONS[1].color },
 	{ key = "W22", name = "Thunder Railgun", desc = "Exclusive · 2x luck · Epoch 14", price = 599, id = 0, color = C.EXCLUSIVE_WEAPONS[2].color },
 	{ key = "W23", name = "Dragon Cannon", desc = "Exclusive · 3x luck · Max reach", price = 1499, id = 0, color = C.EXCLUSIVE_WEAPONS[3].color },
 }
 C.Products = {
-	{ key = "Luck15", name = "3x Luck · 15 min", desc = "Stacks with 2x Luck", price = 49, id = 0, color = Color3.fromRGB(120, 255, 160) },
-	{ key = "Cash", name = "Cash Pack", desc = "10 minutes of income (min $5K)", price = 99, id = 0, color = Color3.fromRGB(90, 255, 90) },
+	{ key = "Luck15", icon = "lucky", face = "Pink", name = "3x Luck · 15 min", desc = "Stacks with 2x Luck", price = 49, id = 0, color = Color3.fromRGB(120, 255, 160) },
+	{ key = "Cash", icon = "cash", face = "Green", name = "Cash Pack", desc = "10 minutes of income (min $5K)", price = 99, id = 0, color = Color3.fromRGB(90, 255, 90) },
 }
 C.LUCK_BOOST_MINUTES = 15
 

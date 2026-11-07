@@ -7,6 +7,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Format = require(ReplicatedStorage.Shared.Format)
 local Map = require(script.Parent.Map)
 local Assets = require(script.Parent.Assets)
 local Tiles = require(ReplicatedStorage.Shared.Tiles)
@@ -23,6 +24,9 @@ Action.Parent = remotes
 local Notify = Instance.new("RemoteEvent")
 Notify.Name = "Notify"
 Notify.Parent = remotes
+local BonusEvent = Instance.new("RemoteEvent")
+BonusEvent.Name = "Bonus"
+BonusEvent.Parent = remotes
 remotes.Parent = ReplicatedStorage
 
 -- La plantilla de Studio trae un SpawnLocation y un Baseplate que quedan en la zona de tiro
@@ -132,6 +136,11 @@ local function push(plr: Player)
 		luck = luckMult(d),
 		heldMax = heldMax(d),
 	}))
+	local i = plotOf[plr]
+	if i then
+		local inc = income(d)
+		plotModels[i].IncomeAnchor.IncomeSign.Text.Text = if inc > 0 then "+$" .. Format(inc) .. "/s" else ""
+	end
 	local ls = plr:FindFirstChild("leaderstats")
 	if ls then
 		(ls :: any).Kills.Value = d.kills
@@ -285,6 +294,28 @@ local function buildPlot(i: number): Model
 	tt.TextColor3 = Color3.fromRGB(255, 220, 80)
 	tt.Parent = trainerSign
 	trainerSign.Parent = pad
+
+	-- Cuánto genera el establo, flotando encima del corral (lo ven todos)
+	local incomeAnchor = plotPart(m, Vector3.new(1, 1, 1), penCenter * CFrame.new(0, 16, 0), Color3.new(1, 1, 1))
+	incomeAnchor.Name = "IncomeAnchor"
+	incomeAnchor.Transparency = 1
+	incomeAnchor.CanCollide = false
+	incomeAnchor.CanQuery = false
+	local incomeSign = Instance.new("BillboardGui")
+	incomeSign.Name = "IncomeSign"
+	incomeSign.Size = UDim2.fromOffset(320, 64)
+	incomeSign.MaxDistance = 220
+	incomeSign.Adornee = incomeAnchor
+	local incomeText = t:Clone()
+	incomeText.Name = "Text"
+	incomeText.Text = ""
+	incomeText.TextColor3 = Color3.fromRGB(150, 255, 60)
+	local incomeStroke = Instance.new("UIStroke")
+	incomeStroke.Thickness = 4
+	incomeStroke.Parent = incomeText
+	incomeText.TextStrokeTransparency = 1
+	incomeText.Parent = incomeSign
+	incomeSign.Parent = incomeAnchor
 
 	local spawnPart = plotPart(m, Vector3.new(7, 0.4, 7), cf * CFrame.new(-18, 0.3, 24), Color3.fromRGB(80, 160, 255), Enum.Material.SmoothPlastic)
 	spawnPart.Name = "Spawn"
@@ -787,6 +818,7 @@ Players.PlayerRemoving:Connect(function(plr)
 	if i then
 		plotModels[i].Animals:ClearAllChildren()
 		plotModels[i].SignPost.OwnerSign.Text.Text = "Empty Stable"
+		plotModels[i].IncomeAnchor.IncomeSign.Text.Text = ""
 	end
 	data[plr] = nil
 	plotOf[plr] = nil
@@ -812,6 +844,35 @@ local function onTrainer(plr: Player): boolean
 	return p.X > 13 and p.X < 23 and p.Z > 17 and p.Z < 25.5
 end
 
+-- Bonus de entrenamiento: de vez en cuando aparece un ícono para clickear que da +2 a +5 de poder
+local bonusNext: { [Player]: number } = {}
+local bonusPending: { [Player]: { id: string, expires: number } } = {}
+local BONUS_WEIGHTS = { { 2, 55 }, { 3, 28 }, { 4, 12 }, { 5, 5 } }
+
+function handlers.ClaimBonus(plr: Player, d: Data, id: any)
+	local pending = bonusPending[plr]
+	if not pending or pending.id ~= id or os.clock() > pending.expires then
+		return
+	end
+	bonusPending[plr] = nil
+	local roll = rng:NextInteger(1, 100)
+	local amount = 2
+	for _, w in BONUS_WEIGHTS do
+		roll -= w[2]
+		if roll <= 0 then
+			amount = w[1]
+			break
+		end
+	end
+	d.power += amount
+	BonusEvent:FireClient(plr, "claimed", amount)
+end
+
+Players.PlayerRemoving:Connect(function(plr)
+	bonusNext[plr] = nil
+	bonusPending[plr] = nil
+end)
+
 task.spawn(function()
 	while true do
 		task.wait(0.5)
@@ -820,6 +881,18 @@ task.spawn(function()
 			if on then
 				d.power += Config.trainerGain(d.trainerLevel)
 				push(plr)
+				local now = os.clock()
+				bonusNext[plr] = bonusNext[plr] or now + rng:NextNumber(5, 10)
+				if now >= bonusNext[plr] and not bonusPending[plr] then
+					local id = HttpService:GenerateGUID(false)
+					bonusPending[plr] = { id = id, expires = now + 5 }
+					bonusNext[plr] = now + rng:NextNumber(6, 12)
+					BonusEvent:FireClient(plr, "spawn", id)
+				end
+			end
+			local pending = bonusPending[plr]
+			if pending and os.clock() > pending.expires then
+				bonusPending[plr] = nil
 			end
 			if plr:GetAttribute("Training") ~= on then
 				plr:SetAttribute("Training", on)

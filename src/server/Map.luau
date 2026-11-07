@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Tiles = require(ReplicatedStorage.Shared.Tiles)
 local Models = require(ReplicatedStorage.Shared.Models)
+local Scenery = require(script.Parent.Scenery)
 
 local Map = {}
 
@@ -101,12 +102,6 @@ local function checkerWall(from: Vector3, to: Vector3, height: number, colorA: C
 	end
 end
 
-local function bush(pos: Vector3, color: Color3)
-	local all = { Enum.NormalId.Top, Enum.NormalId.Left, Enum.NormalId.Right, Enum.NormalId.Front, Enum.NormalId.Back }
-	Tiles(block(Vector3.new(10, 4, 8), pos + Vector3.new(0, 2, 0), color, nil, Enum.Material.SmoothPlastic), all, 2)
-	Tiles(block(Vector3.new(6, 3, 6), pos + Vector3.new(1, 5.5, 0), color, nil, Enum.Material.SmoothPlastic), all, 2)
-end
-
 local function floor(size: Vector3, pos: Vector3, color: Color3): Part
 	local p = block(size, pos, color, nil, Enum.Material.SmoothPlastic)
 	Tiles(p, { Enum.NormalId.Top }, 6)
@@ -138,7 +133,6 @@ function Map.build(): { CFrame }
 	sign("SHOOT ZONE", Vector3.new(0, 18, -11), Color3.fromRGB(255, 230, 80))
 
 	-- Corredor de épocas
-	local rng = Random.new(7)
 	for e, epoch in Config.Epochs do
 		local z0 = Config.FIELD_START + (e - 1) * Config.ZONE_LEN - (if e == 1 then Config.FIELD_START - 12 else 0)
 		local z1 = Config.FIELD_START + e * Config.ZONE_LEN
@@ -151,9 +145,7 @@ function Map.build(): { CFrame }
 		local zStart = Config.FIELD_START + (e - 1) * Config.ZONE_LEN
 		block(Vector3.new(Config.FIELD_WIDTH, 0.2, 3), Vector3.new(0, 0.1, zStart), epoch.wallA)
 		sign(string.format("Epoch %d: %s", e, epoch.name), Vector3.new(halfW - 18, 12, zStart), Color3.new(1, 1, 1))
-		for _ = 1, 5 do
-			bush(Vector3.new(rng:NextNumber(-halfW + 8, halfW - 8), 0, rng:NextNumber(zStart + 10, z1 - 10)), epoch.prop)
-		end
+		Scenery.decorate(e, zStart, z1, folder)
 	end
 	local endZ = Config.FIELD_START + Config.NUM_EPOCHS * Config.ZONE_LEN
 	block(Vector3.new(Config.FIELD_WIDTH + 8, 60, 4), Vector3.new(0, 30, endZ + 2), Color3.fromRGB(30, 10, 50))
@@ -253,10 +245,10 @@ function Map.build(): { CFrame }
 	end
 	local weaponCF = CFrame.lookAt(Vector3.new(-80, 0, -26), Vector3.new(0, 0, -26))
 	shopDisplayCF = weaponCF * CFrame.new(0, 0, -3.6)
-	stall("WeaponShop", weaponCF, "WEAPON SHOP", Color3.fromRGB(40, 120, 230), Color3.new(1, 1, 1), Color3.fromRGB(255, 220, 80), "Open Shop", Color3.fromRGB(50, 90, 160))
+	stall("WeaponShop", weaponCF, "WEAPONS", Color3.fromRGB(40, 120, 230), Color3.new(1, 1, 1), Color3.fromRGB(255, 220, 80), "Open Shop", Color3.fromRGB(50, 90, 160))
 	Map.refreshShop()
 	local robuxCF = CFrame.lookAt(Vector3.new(80, 0, -26), Vector3.new(0, 0, -26))
-	local robux = stall("RobuxShop", robuxCF, "ROBUX SHOP", Color3.fromRGB(40, 200, 90), Color3.fromRGB(255, 210, 50), Color3.fromRGB(120, 255, 140), "Open Robux Shop", Color3.fromRGB(40, 140, 70))
+	local robux = stall("RobuxShop", robuxCF, "SHOP", Color3.fromRGB(40, 200, 90), Color3.fromRGB(255, 210, 50), Color3.fromRGB(120, 255, 140), "Open Shop", Color3.fromRGB(40, 140, 70))
 	-- Cofre dorado sobre el mostrador
 	local chest = block(Vector3.new(4, 2.4, 2.4), Vector3.zero, Color3.fromRGB(255, 200, 40), robux, Enum.Material.Foil)
 	chest.CFrame = robuxCF * CFrame.new(0, 5.7, -3.6)
